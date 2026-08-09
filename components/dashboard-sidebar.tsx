@@ -72,8 +72,11 @@ const STUDENT_ITEMS: Item[] = [
   { href: "/dashboard/cours/profil", icon: UserCog, label: "Mon profil" },
 ];
 
+// Bordure gauche transparente sur tous les items : l'actif la colore en épicéa
+// (son « filet »), et la réserver dès l'état neutre évite tout décalage de 2px
+// au changement de page.
 const ITEM_CLASS =
-  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors";
+  "flex w-full items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-2 text-sm font-medium transition-colors";
 
 export function DashboardSidebar({
   role,
@@ -126,8 +129,8 @@ export function DashboardSidebar({
         className={cn(
           ITEM_CLASS,
           active
-            ? "bg-surface text-foreground"
-            : "text-muted hover:bg-surface hover:text-foreground"
+            ? "border-primary bg-sidebar-active text-sidebar-foreground"
+            : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
@@ -145,7 +148,10 @@ export function DashboardSidebar({
     <Link
       href="/profs"
       onClick={() => setOpen(false)}
-      className={cn(ITEM_CLASS, "text-muted hover:bg-surface hover:text-foreground")}
+      className={cn(
+        ITEM_CLASS,
+        "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      )}
     >
       <Search className="h-4 w-4 shrink-0" />
       <span className="flex-1">Trouver un prof</span>
@@ -189,15 +195,15 @@ export function DashboardSidebar({
           <Dialog.Content
             id="dashboard-drawer"
             aria-describedby={undefined}
-            className="drawer-panel fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82%] flex-col bg-background shadow-xl lg:hidden"
+            className="drawer-panel fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82%] flex-col bg-sidebar text-sidebar-foreground shadow-xl lg:hidden"
           >
             <Dialog.Title className="sr-only">Menu de navigation</Dialog.Title>
 
-            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <div className="flex items-center justify-between gap-2 border-b border-sidebar-border px-4 py-3">
               {brand}
               <Dialog.Close
                 aria-label="Fermer le menu"
-                className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="rounded-md p-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <X className="h-5 w-5" />
               </Dialog.Close>
@@ -205,16 +211,17 @@ export function DashboardSidebar({
 
             <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
               {items.map((item) => renderItem(item))}
-              <span aria-hidden className="my-2 h-px shrink-0 bg-border" />
+              <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
               {findAProf}
             </nav>
 
-            <div className="border-t border-border p-2">
+            <div className="border-t border-sidebar-border p-2">
               <UserNav
                 role={role}
                 isAdmin={isAdmin}
                 user={user}
                 showDetails
+                tone="dark"
                 onNavigate={() => setOpen(false)}
               />
             </div>
@@ -223,17 +230,17 @@ export function DashboardSidebar({
       </Dialog.Root>
 
       {/* Sidebar desktop — inchangée. */}
-      <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-border">
+      <aside className="hidden bg-sidebar text-sidebar-foreground lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-sidebar-border">
         <div className="flex items-center px-4 py-4">{brand}</div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
           {items.map((item) => renderItem(item, true))}
-          <span aria-hidden className="my-2 h-px shrink-0 bg-border" />
+          <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
           {findAProf}
         </nav>
 
-        <div className="border-t border-border p-2">
-          <UserNav role={role} isAdmin={isAdmin} user={user} showDetails />
+        <div className="border-t border-sidebar-border p-2">
+          <UserNav role={role} isAdmin={isAdmin} user={user} showDetails tone="dark" />
         </div>
       </aside>
     </>

@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 export type NavUser = {
   name: string | null;
@@ -62,6 +63,7 @@ export function UserNav({
   isAdmin = false,
   user,
   showDetails = false,
+  tone = "default",
   onNavigate,
 }: {
   role: Role | null;
@@ -77,6 +79,13 @@ export function UserNav({
    * avatar. Ailleurs (en-têtes), le déclencheur reste l'avatar seul.
    */
   showDetails?: boolean;
+  /**
+   * Teinte du déclencheur, pas du menu : celui-ci s'ouvre dans un portail (fond
+   * clair) et reste lisible tel quel. En pied de barre latérale, le déclencheur
+   * vit sur le panneau d'encre sombre — survol et e-mail passent alors sur les
+   * jetons `sidebar`. Ailleurs (en-têtes clairs), il garde la teinte par défaut.
+   */
+  tone?: "default" | "dark";
 }) {
   const router = useRouter();
 
@@ -131,7 +140,10 @@ export function UserNav({
         {showDetails ? (
           <button
             type="button"
-            className="flex w-full cursor-pointer items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className={cn(
+              "flex w-full cursor-pointer items-center gap-2 rounded-md p-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              tone === "dark" ? "hover:bg-sidebar-accent" : "hover:bg-surface"
+            )}
           >
             <Avatar className="h-8 w-8 shrink-0">
               <AvatarImage
@@ -144,7 +156,12 @@ export function UserNav({
               <span className="block truncate text-sm font-medium">
                 {user.name ?? "Mon compte"}
               </span>
-              <span className="block truncate text-xs text-muted">
+              <span
+                className={cn(
+                  "block truncate text-xs",
+                  tone === "dark" ? "text-sidebar-muted" : "text-muted"
+                )}
+              >
                 {user.email}
               </span>
             </span>
