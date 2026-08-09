@@ -62,10 +62,14 @@ export function UserNav({
   isAdmin = false,
   user,
   showDetails = false,
+  onNavigate,
 }: {
   role: Role | null;
   isAdmin?: boolean;
   user: NavUser;
+  /** Appelé avant chaque navigation du menu — sert au tiroir mobile à se
+   * refermer quand on part vers une page depuis le compte. */
+  onNavigate?: () => void;
   /**
    * Déclencheur « plein » : avatar + nom + e-mail, toute la rangée cliquable.
    * Utilisé en pied de barre latérale, où l'identité est déjà affichée à côté
@@ -181,7 +185,10 @@ export function UserNav({
             return (
               <DropdownMenuItem
                 key={item.href}
-                onClick={() => router.push(item.href)}
+                onClick={() => {
+                  onNavigate?.();
+                  router.push(item.href);
+                }}
               >
                 <Icon className="mr-2 h-4 w-4" />
                 <span>{item.label}</span>
@@ -194,6 +201,7 @@ export function UserNav({
 
         <DropdownMenuItem
           onClick={async () => {
+            onNavigate?.();
             await authClient.signOut();
             router.push("/");
             router.refresh();

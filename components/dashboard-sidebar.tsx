@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   CalendarClock,
   CalendarDays,
@@ -12,6 +13,7 @@ import {
   Inbox,
   LayoutDashboard,
   type LucideIcon,
+  Menu,
   MessageSquare,
   Music4,
   Search,
@@ -19,23 +21,28 @@ import {
   TrendingUp,
   UserCog,
   Users,
+  X,
 } from "lucide-react";
 
 import { UserNav, type NavUser } from "@/components/user-nav";
 import { cn } from "@/lib/utils";
 
 /**
- * Navigation unique de l'espace connecté.
+ * Navigation de l'espace connecté.
  *
- * Une seule barre latérale porte tout — marque, navigation, recherche, compte —
- * de sorte qu'il n'y a plus d'en-tête au-dessus du contenu. Elle a une bordure
- * (droite sur grand écran, basse sur mobile) qui délimite nettement sa place.
- * Verticale sur grand écran, rangée horizontale défilante sur mobile (une
- * sidebar y serait inutilisable), le tout piloté par des classes responsives.
+ * Une barre latérale verticale sur grand écran (marque, navigation, recherche,
+ * compte), avec une bordure à droite. Sur mobile, où une sidebar serait
+ * inutilisable, un **bandeau** (logo · burger · compte) ouvre un **tiroir** qui
+ * porte la même navigation verticale — une liste longue (onze entrées côté prof)
+ * défilant horizontalement était impossible à parcourir, ses items partant hors
+ * champ. Le tiroir est un Radix Dialog : piège de focus, `Échap`, verrou de
+ * défilement, `aria-modal` et retour du focus au burger sont gérés pour nous ;
+ * il ne nous reste qu'à le fermer au changement de route.
  *
- * Client Component pour marquer l'entrée courante (`usePathname`) ; les listes
- * d'items vivent ici car les icônes ne traversent pas la frontière serveur →
- * client. Le layout ne passe que le rôle, l'identité et un compteur.
+ * Client Component pour marquer l'entrée courante (`usePathname`) et tenir
+ * l'ouverture du tiroir ; les listes d'items vivent ici car les icônes ne
+ * traversent pas la frontière serveur → client. Le layout ne passe que le rôle,
+ * `isAdmin`, l'identité et un compteur.
  */
 type Item = { href: string; icon: LucideIcon; label: string; exact?: boolean };
 
@@ -66,7 +73,7 @@ const STUDENT_ITEMS: Item[] = [
 ];
 
 const ITEM_CLASS =
-  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors lg:w-full";
+  "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors";
 
 export function DashboardSidebar({
   role,
@@ -84,14 +91,19 @@ export function DashboardSidebar({
 }) {
   const pathname = usePathname();
   const activeRef = useRef<HTMLAnchorElement>(null);
+  const [open, setOpen] = useState(false);
 
   const items = role === "TEACHER" ? TEACHER_ITEMS : STUDENT_ITEMS;
   const home = "/dashboard";
 
-  // Sur mobile la rangée défile et les derniers items sont hors champ : on amène
-  // l'item courant dans le champ pour qu'il ne soit jamais souligné « nulle part ».
+  // Le tiroir se ferme au clic, explicitement, plutôt que dans un effet réagissant
+  // à la route (un `setState` synchrone y est déconseillé) : chaque lien appelle
+  // `setOpen(false)`, et le menu du compte le fait via son `onNavigate`. Toutes
+  // les navigations déclenchées depuis le tiroir le referment donc.
+
+  // Amène l'entrée courante dans le champ de la nav verticale (desktop).
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    activeRef.current?.scrollIntoView({ block: "nearest" });
   }, [pathname]);
 
   const isActive = (item: Item) =>
@@ -99,7 +111,7 @@ export function DashboardSidebar({
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
-  const renderItem = (item: Item) => {
+  const renderItem = (item: Item, attachRef = false) => {
     const Icon = item.icon;
     const active = isActive(item);
     const badge = badges[item.href] ?? 0;
@@ -107,8 +119,9 @@ export function DashboardSidebar({
     return (
       <Link
         key={item.href}
-        ref={active ? activeRef : undefined}
+        ref={attachRef && active ? activeRef : undefined}
         href={item.href}
+        onClick={() => setOpen(false)}
         aria-current={active ? "page" : undefined}
         className={cn(
           ITEM_CLASS,
@@ -118,7 +131,7 @@ export function DashboardSidebar({
         )}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        <span className="lg:flex-1">{item.label}</span>
+        <span className="flex-1">{item.label}</span>
         {badge > 0 ? (
           <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
             {badge}
@@ -128,44 +141,101 @@ export function DashboardSidebar({
     );
   };
 
+  const findAProf = (
+    <Link
+      href="/profs"
+      onClick={() => setOpen(false)}
+      className={cn(ITEM_CLASS, "text-muted hover:bg-surface hover:text-foreground")}
+    >
+      <Search className="h-4 w-4 shrink-0" />
+      <span className="flex-1">Trouver un prof</span>
+    </Link>
+  );
+
+  const brand = (
+    <Link
+      href={home}
+      onClick={() => setOpen(false)}
+      className="flex items-center gap-2 font-semibold"
+    >
+      <Music4 className="h-5 w-5 text-primary" />
+      SiNote
+    </Link>
+  );
+
   return (
-    <aside className="flex flex-col border-b border-border lg:sticky lg:top-0 lg:h-screen lg:w-60 lg:shrink-0 lg:border-b-0 lg:border-r">
-      {/* Marque + compte (le compte n'apparaît ici que sur mobile). */}
-      <div className="flex items-center justify-between gap-2 px-4 py-3 lg:py-4">
-        <Link href={home} className="flex items-center gap-2 font-semibold">
-          <Music4 className="h-5 w-5 text-primary" />
-          SiNote
-        </Link>
-        <div className="lg:hidden">
-          <UserNav role={role} isAdmin={isAdmin} user={user} />
-        </div>
-      </div>
-
-      {/* Navigation */}
-      <nav className="flex gap-1 overflow-x-auto px-4 pb-2 lg:flex-1 lg:flex-col lg:gap-0.5 lg:overflow-x-visible lg:overflow-y-auto lg:px-3 lg:pb-2">
-        {items.map(renderItem)}
-
-        <span
-          aria-hidden
-          className="hidden h-px shrink-0 bg-border lg:my-2 lg:block"
-        />
-        <Link
-          href="/profs"
-          className={cn(
-            ITEM_CLASS,
-            "text-muted hover:bg-surface hover:text-foreground"
-          )}
+    <>
+      {/* Bandeau mobile : la nav vit dans le tiroir, pas ici. */}
+      <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-2.5 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="Ouvrir le menu"
+          aria-expanded={open}
+          aria-controls="dashboard-drawer"
+          className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <Search className="h-4 w-4 shrink-0" />
-          <span className="lg:flex-1">Trouver un prof</span>
-        </Link>
-      </nav>
-
-      {/* Compte, en pied de sidebar sur grand écran. Toute la rangée (avatar,
-          nom, e-mail) ouvre le menu, pas seulement l'avatar. */}
-      <div className="hidden border-t border-border p-2 lg:block">
-        <UserNav role={role} isAdmin={isAdmin} user={user} showDetails />
+          <Menu className="h-5 w-5" />
+        </button>
+        {brand}
+        <UserNav role={role} isAdmin={isAdmin} user={user} />
       </div>
-    </aside>
+
+      {/* Tiroir mobile — Radix Dialog : focus piégé, Échap, verrou de défilement,
+          aria-modal et retour du focus au burger sont gérés par la primitive. */}
+      <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="drawer-overlay fixed inset-0 z-40 bg-black/40 lg:hidden" />
+          <Dialog.Content
+            id="dashboard-drawer"
+            aria-describedby={undefined}
+            className="drawer-panel fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82%] flex-col bg-background shadow-xl lg:hidden"
+          >
+            <Dialog.Title className="sr-only">Menu de navigation</Dialog.Title>
+
+            <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+              {brand}
+              <Dialog.Close
+                aria-label="Fermer le menu"
+                className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <X className="h-5 w-5" />
+              </Dialog.Close>
+            </div>
+
+            <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
+              {items.map((item) => renderItem(item))}
+              <span aria-hidden className="my-2 h-px shrink-0 bg-border" />
+              {findAProf}
+            </nav>
+
+            <div className="border-t border-border p-2">
+              <UserNav
+                role={role}
+                isAdmin={isAdmin}
+                user={user}
+                showDetails
+                onNavigate={() => setOpen(false)}
+              />
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Sidebar desktop — inchangée. */}
+      <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-border">
+        <div className="flex items-center px-4 py-4">{brand}</div>
+
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
+          {items.map((item) => renderItem(item, true))}
+          <span aria-hidden className="my-2 h-px shrink-0 bg-border" />
+          {findAProf}
+        </nav>
+
+        <div className="border-t border-border p-2">
+          <UserNav role={role} isAdmin={isAdmin} user={user} showDetails />
+        </div>
+      </aside>
+    </>
   );
 }

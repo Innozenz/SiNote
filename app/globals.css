@@ -443,3 +443,35 @@ h3 {
     }
   }
 }
+
+/**
+ * Tiroir de navigation mobile (Radix Dialog monté en sheet latéral).
+ *
+ * Animation d'entrée seulement : Radix démonte le panneau à la fermeture, la
+ * sortie est donc instantanée — robuste et suffisant. Sous `reduced-motion`,
+ * aucune animation : le panneau apparaît directement à son état final.
+ */
+@keyframes sinote-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sinote-drawer-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .drawer-panel[data-state="open"] {
+    animation: sinote-drawer-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .drawer-overlay[data-state="open"] {
+    animation: sinote-drawer-fade 180ms ease-out;
+  }
+}
