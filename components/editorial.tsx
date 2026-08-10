@@ -43,7 +43,7 @@ export function Eyebrow({
 }
 
 /**
- * Titre d'affichage (Fraunces). Casse laissée au choix de l'appelant.
+ * Titre d'affichage (Cormorant). Casse laissée au choix de l'appelant.
  * `display` (défaut) : démesuré, pour les pages vitrines. `page` : marqué mais
  * plus sobre, pour les écrans internes qui vivent déjà sous une barre d'onglets.
  */

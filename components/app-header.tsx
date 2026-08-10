@@ -1,7 +1,8 @@
 import type { Role } from "@prisma/client";
 import Link from "next/link";
-import { Music4, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
+import { SiteLogo } from "@/components/site-logo";
 import { UserNav, type NavUser } from "@/components/user-nav";
 import { Button } from "@/components/ui/button";
 
@@ -41,9 +42,8 @@ export function AppHeader({
     <header className="border-b border-border bg-white">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
         {/* Le logo renvoie à l'espace de l'utilisateur, pas à l'accueil public. */}
-        <Link href={home} className="flex items-center gap-2 font-semibold">
-          <Music4 className="h-5 w-5 text-primary" />
-          SiNote
+        <Link href={home} aria-label="SiNote — accueil">
+          <SiteLogo />
         </Link>
 
         <nav className="flex items-center gap-1">

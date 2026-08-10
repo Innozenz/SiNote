@@ -1,16 +1,17 @@
 @import "tailwindcss";
 
 /**
- * Système de design SiNote — « ReChord » : encre sur papier chaud, épicéa aux
- * actions, emphase bronze. Les neutres ne portent aucune teinte de marque.
+ * Système de design SiNote — « Bleu conservatoire » : papier crème chaud, bleu
+ * de Prusse aux actions, emphase or antique. Les neutres ne portent aucune
+ * teinte de marque.
  *
  * Tout passe par des jetons sémantiques : un composant dit `bg-surface`, pas
- * `bg-zinc-50`. L'identité se règle donc en un endroit plutôt qu'en cent.
- *
- * Palette issue d'un thème tweakcn, transposée à la main sur ce vocabulaire (et
- * non appliquée via `shadcn add`, qui aurait remplacé nos jetons — surfaces,
- * familles, statuts — par ceux de shadcn et ajouté un bloc sombre). Les huit
- * teintes de familles d'instruments sont conservées telles quelles.
+ * `bg-zinc-50`. L'identité se règle donc en un endroit plutôt qu'en cent — c'est
+ * ce qui a permis de passer de « encre sur papier » (épicéa/bronze) à ce bleu/or
+ * en éditant les jetons, pas les composants. Ne pas appliquer via `shadcn add`,
+ * qui remplacerait nos jetons — surfaces, familles, statuts — par ceux de shadcn
+ * et ajouterait un bloc sombre. Les huit teintes de familles d'instruments sont
+ * conservées telles quelles.
  *
  * Thème clair uniquement, par choix. `color-scheme: light` ci-dessous est
  * indispensable : sans lui, un navigateur réglé en sombre continue de teinter
@@ -21,55 +22,46 @@
 :root {
   color-scheme: light;
 
-  /* Fonds : du papier chaud, pas du gris — ni du vert. Les neutres ne portent
-     aucune teinte de marque : le vert vit dans le primaire et les familles, le
-     papier reste neutre chaud. C'est la refonte éditoriale qui l'a imposé — des
-     filets et des libellés gris partout, verdis, badigeonnaient toute la page.
-     Blanc pur réservé aux surfaces élevées (cartes). */
-  --background: #faf8f4;
-  --surface: #f1eee7;
-  --surface-strong: #e7e1d6;
-  --elevated: #ffffff;
+  /* « Bleu conservatoire » : papier crème chaud, bleu de Prusse, or antique.
+     Les neutres ne portent pas la teinte de marque — le bleu vit dans le
+     primaire, l'or dans l'accent, la crème reste neutre chaude. Surfaces
+     élevées (cartes) en crème très clair, pas en blanc pur. */
+  --background: #f5efe1;
+  --surface: #efe6d2;
+  --surface-strong: #e6dcc4;
+  --elevated: #fdfaf2;
 
-  /* Texte : de l'encre chaude, pas du noir bleuté ni du vert. */
-  --foreground: #1f1b16;
-  --muted: #6e6559;
-  --subtle: #a49a8b;
+  /* Texte : de l'encre bleu-ardoise profonde, pas un noir pur. */
+  --foreground: #1f2b33;
+  --muted: #5f6a72;
+  --subtle: #8b9299;
 
-  --border: #e8e1d5;
-  --border-strong: #d7d0c0;
+  --border: #e0d6bf;
+  --border-strong: #cfc3a6;
 
-  /* Barre latérale : un panneau d'encre chaude qui tranche sur le papier ivoire.
+  /* Barre latérale : un panneau bleu de Prusse profond qui tranche sur la crème.
      Ce n'est pas un thème sombre — l'app reste claire (cf. `color-scheme: light`)
      et il n'y a toujours aucune variante `dark:` ; c'est un contraste voulu, posé
-     sur ses propres jetons pour que le reste du système ne bouge pas. L'encre est
-     chaude (brune), pas un noir bleuté, pour rester dans le même arc que le
-     papier. Le vert du primaire garde son rôle : puces de compteur et note de la
-     marque. */
-  --sidebar: #211c15;
-  --sidebar-foreground: #f3efe8;
-  --sidebar-muted: #a89e8d;
-  --sidebar-accent: #322c22;
-  --sidebar-border: #3a3226;
-  /* Item actif : « vert = cliquable » de la marque, transposé sur le panneau
-     sombre. Un fond vert-épicéa sombre (le texte clair reste lisible par-dessus,
-     ce que du texte vert ne serait pas à ce contraste) + un filet primaire à
-     gauche. La teinte verte le distingue nettement du survol, chaud et neutre. */
-  --sidebar-active: #213a2d;
+     sur ses propres jetons. */
+  --sidebar: #10293f;
+  --sidebar-foreground: #eef1f5;
+  --sidebar-muted: #93a3b0;
+  --sidebar-accent: #17364f;
+  --sidebar-border: #244a67;
+  /* Item actif : un bleu plus clair sur le panneau, texte clair par-dessus. */
+  --sidebar-active: #1a3e5c;
 
-  /* Épicéa : actions, liens, tout ce qui se clique. Il vit dans le même arc que
-     les familles vertes (« vents », « percussions », « succès ») — assumé : le
-     primaire habille les boutons et les liens, les familles habillent les puces
-     et les notes, ils se croisent sans se confondre par le contexte. */
-  --primary: #2d765b;
-  --primary-hover: #245f49;
-  --primary-soft: #dceae4;
-  --primary-foreground: #fbfbf9;
+  /* Bleu de Prusse : actions, liens, tout ce qui se clique. La voix de la
+     marque — chic et musicale, dans l'esprit d'une institution. */
+  --primary: #123551;
+  --primary-hover: #1b4a6e;
+  --primary-soft: #e0e8ef;
+  --primary-foreground: #f6f0e2;
 
-  /* Bronze : réservé aux mises en avant (soulignés, emphase éditoriale). Rare,
-     donc efficace, et chaud — le seul contrepoint chaleureux au vert. */
-  --accent: #a66f3f;
-  --accent-soft: #f3e7d9;
+  /* Or antique : réservé aux mises en avant (soulignés, eyebrows, puces de
+     section). Rare, donc efficace — le seul contrepoint chaleureux au bleu. */
+  --accent: #a97f38;
+  --accent-soft: #ece0c6;
 
   --success: #059669;
   --success-soft: #e9f6ef;
@@ -186,15 +178,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Titres : la voix de la marque. Fraunces, un serif d'affichage. L'interlettrage
-   négatif reste léger — un serif ne se resserre pas comme une grotesque sans que
-   ses empattements ne se touchent. */
+/* Titres : la voix de la marque. Cormorant, un serif haute-classe à fort
+   contraste. Pas d'interlettrage négatif — une Didone/garalde se resserre mal,
+   ses pleins et déliés se toucheraient ; on l'ouvre même légèrement. Poids 600 :
+   présent sans être lourd à grande taille. */
 h1,
 h2,
 h3 {
   font-family: var(--font-display), var(--font-sans-custom), serif;
-  letter-spacing: -0.015em;
-  font-weight: 700;
+  letter-spacing: 0.005em;
+  font-weight: 600;
 }
 
 /* Anneau de focus visible et cohérent : l'accessibilité ne doit pas dépendre
@@ -498,5 +491,22 @@ h3 {
   }
   .drawer-overlay[data-state="open"] {
     animation: sinote-drawer-fade 180ms ease-out;
+  }
+}
+
+/**
+ * Médaillon de la page d'accueil : l'anneau doré (et ses étoiles en orbite)
+ * tourne lentement autour du disque gravé. Remplace le séquenceur de portée.
+ * Hors `reduced-motion` uniquement — sinon l'anneau reste immobile, ce qui est
+ * son état final, sans rien casser.
+ */
+@keyframes sinote-medallion-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .m-medallion-ring {
+    animation: sinote-medallion-spin 44s linear infinite;
   }
 }

@@ -1,18 +1,15 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import type { InstrumentFamily } from "@prisma/client";
-import { ArrowUpRight, Search } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 
+import { HeroSearch } from "@/components/hero-search";
 import { SiteHeader } from "@/components/site-header";
 import { Spotlight } from "@/components/spotlight";
-import { Button } from "@/components/ui/button";
 import prisma from "@/lib/prisma";
-import {
-  FAMILY_LABELS,
-  FAMILY_ORDER,
-  FAMILY_STYLES,
-} from "@/lib/instruments/family";
+import { FAMILY_STYLES } from "@/lib/instruments/family";
 import { buildScore } from "@/lib/instruments/score";
+import { searchTeachers, type SearchResult } from "@/lib/search/teachers";
 import { visibleTeacherWhere } from "@/lib/teacher/visibility";
 import { cn } from "@/lib/utils";
 
@@ -112,7 +109,7 @@ const reveal = (index: number): CSSProperties =>
 export default async function HomePage() {
   const where = visibleTeacherWhere(new Date());
 
-  const [instruments, cities, teacherCount] = await Promise.all([
+  const [instruments, cities, teacherCount, featuredResp] = await Promise.all([
     // Instruments effectivement enseignés, les plus représentés d'abord. La
     // limite dépasse le catalogue : le compteur affiché serait faux si la
     // requête tronquait.
@@ -135,14 +132,20 @@ export default async function HomePage() {
       take: 12,
     }),
     prisma.teacherProfile.count({ where }),
+    // Profs en vedette : les mieux classés (moyenne bayésienne), tête de liste.
+    // On réutilise la recherche pour ne pas dupliquer la logique de visibilité
+    // et de note.
+    searchTeachers({
+      instrument: null,
+      city: null,
+      mode: null,
+      maxRateCents: null,
+      trialOnly: false,
+      page: 1,
+    }),
   ]);
 
-  // Regroupement par famille, dans l'ordre du répertoire et non dans celui de
-  // la requête : à l'intérieur d'une famille, le plus enseigné reste devant.
-  const families = FAMILY_ORDER.map((family) => ({
-    family,
-    items: instruments.filter((instrument) => instrument.family === family),
-  })).filter((group) => group.items.length > 0);
+  const featured = featuredResp.results.slice(0, 3);
 
   const tally = [
     teacherCount > 0 ? count(teacherCount, "professeur") : null,
@@ -170,198 +173,147 @@ export default async function HomePage() {
               className="m-drift-a absolute -left-40 -top-56 h-[38rem] w-[38rem] rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgb(45 118 91 / 0.16), transparent 65%)",
+                  "radial-gradient(circle, rgb(18 53 81 / 0.16), transparent 65%)",
               }}
             />
             <div
               className="m-drift-b absolute -right-40 -top-24 h-[32rem] w-[32rem] rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgb(166 111 63 / 0.12), transparent 65%)",
+                  "radial-gradient(circle, rgb(169 127 56 / 0.14), transparent 65%)",
               }}
             />
           </div>
 
-          {/* Accroche centrée. Alignée à gauche, la colonne de titre laissait
-              un tiers de la largeur vide à droite, et la portée qui la
-              surplombe, elle, va d'un bord à l'autre : le déséquilibre se
-              voyait. Centré, le bloc se cale sur la portée. */}
-          <div className="relative mx-auto max-w-5xl px-4 pb-20 pt-14 text-center sm:pt-20">
-            <Staff families={families.map((group) => group.family)} />
-
-            {tally.length > 0 ? (
-              <p
-                /* Dégagement calculé, pas choisi à l'œil : une ligature
-                   descendante peut plonger de six demi-interlignes sous la
-                   dernière ligne, soit 41 px hors de la boîte de la portée. */
-                className="m-rise mt-14 text-xs uppercase tracking-[0.22em] text-subtle"
-                style={rise(0.05)}
-              >
-                {tally.join(" · ")}
+          {/* Accroche en deux colonnes : le texte à gauche, le médaillon gravé
+              à droite. Registre « conservatoire » — eyebrow doré, titre en
+              Cormorant avec un mot en italique doré, filet or. */}
+          <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:py-24 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="m-rise" style={rise(0.05)}>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+                Cours de musique &amp; de chant
               </p>
-            ) : null}
 
-            <h1 className="mt-5">
-              {/* La taille est fluide, en style inline : `clamp()` contient des
-                  virgules, et une valeur arbitraire Tailwind s'y découperait. */}
-              <span
-                className="block font-display font-extrabold uppercase leading-[0.86] tracking-[-0.04em]"
-                style={{ fontSize: "clamp(2.75rem, 11vw, 7rem)" }}
+              <h1
+                className="mt-4 font-display font-semibold leading-[1.03]"
+                style={{ fontSize: "clamp(2.6rem, 6.4vw, 4.6rem)" }}
               >
-                {/* Chaque ligne monte de derrière son propre masque. Le
-                    rembourrage bas laisse passer la jambe du « Q » de MUSIQUE,
-                    que `overflow: hidden` trancherait net ; la marge négative
-                    le reprend, donc la mise en page ne bouge pas. */}
-                <span className="-mb-[0.16em] block overflow-hidden pb-[0.16em]">
-                  <span className="m-unmask block" style={rise(0.1)}>
-                    Apprenez
-                  </span>
-                </span>
-                <span className="-mb-[0.16em] block overflow-hidden pb-[0.16em]">
-                  <span className="m-unmask block" style={rise(0.2)}>
-                    la musique
-                  </span>
-                </span>
-              </span>
+                Le professeur qui vous fait{" "}
+                <em className="italic text-accent">progresser</em>
+              </h1>
 
-              {/* Écart généreux : la jambe du « Q » descend loin sous la ligne
-                  de base, et venait toucher cette phrase. */}
-              <span
-                className="m-rise mt-10 block font-sans text-xl font-normal leading-snug tracking-normal text-muted sm:text-2xl"
-                style={rise(0.45)}
-              >
-                avec un prof{" "}
-                {/* Le rose reste l'emphase éditoriale, jamais une famille : il
-                    n'apparaît qu'ici sur toute la page. */}
-                <span className="relative whitespace-nowrap text-foreground">
-                  qui vous ressemble
-                  <svg
-                    aria-hidden
-                    viewBox="0 0 300 12"
-                    className="absolute -bottom-1.5 left-0 h-3 w-full text-accent"
-                    preserveAspectRatio="none"
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">
+                L’exigence d’un conservatoire, la simplicité d’une réservation en
+                ligne. Trouvez votre professeur, consultez ses disponibilités,
+                réservez votre premier cours.
+              </p>
+
+              {/* Filet doré — la touche or, en emphase éditoriale. */}
+              <div
+                aria-hidden
+                className="mt-7 h-px max-w-sm"
+                style={{
+                  background: "linear-gradient(90deg, var(--accent), transparent)",
+                }}
+              />
+
+              <div className="mt-6">
+                <HeroSearch
+                  instruments={instruments.map((item) => ({
+                    slug: item.slug,
+                    name: item.name,
+                  }))}
+                />
+
+                <p className="mt-3 text-sm text-muted">
+                  Vous enseignez ?{" "}
+                  <Link
+                    href="/connexion"
+                    className="font-medium text-primary underline-offset-2 hover:underline"
                   >
-                    <path
-                      d="M2 8c60-6 120-6 180-2s80 4 116-2"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </span>
-              </span>
-            </h1>
+                    Devenir prof →
+                  </Link>
+                </p>
+              </div>
 
-            <p
-              className="m-rise mx-auto mt-9 max-w-xl text-pretty leading-relaxed text-muted"
-              style={rise(0.55)}
-            >
-              Chant, piano, guitare, batterie… Consultez les disponibilités
-              réelles des profs et réservez en quelques clics. Vous réglez votre
-              prof directement, sans commission.
-            </p>
+              {tally.length > 0 ? (
+                <p className="mt-5 text-sm text-subtle">
+                  <span className="text-accent">★</span> Des profs vérifiés ·{" "}
+                  {tally.join(" · ")}
+                </p>
+              ) : null}
+            </div>
 
-            <div
-              className="m-rise mt-8 flex flex-wrap items-center justify-center gap-3"
-              style={rise(0.65)}
-            >
-              <Button size="lg" asChild>
-                <Link href="/profs">
-                  <Search className="h-4 w-4" />
-                  Trouver un prof
-                </Link>
-              </Button>
-              <Button size="lg" variant="ghost" asChild>
-                <Link href="/connexion">
-                  Je suis professeur
-                  <ArrowUpRight className="h-4 w-4" />
-                </Link>
-              </Button>
+            {/* Médaillon : un anneau doré (étoiles en orbite) qui tourne autour
+                d'un disque bleu de Prusse gravé, note dorée au centre. Remplace
+                la portée-séquenceur ; l'animation vit dans `globals.css`. */}
+            <div aria-hidden className="relative hidden lg:block">
+              <div className="relative mx-auto grid h-[340px] w-[340px] place-items-center">
+                <div
+                  className="m-medallion-ring absolute inset-6 rounded-full border"
+                  style={{ borderColor: "var(--accent-soft)" }}
+                >
+                  <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 text-sm text-accent">
+                    ✦
+                  </span>
+                  <span className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 text-sm text-accent">
+                    ✦
+                  </span>
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 text-sm text-accent">
+                    ✦
+                  </span>
+                  <span className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm text-accent">
+                    ✦
+                  </span>
+                </div>
+
+                <div
+                  className="relative grid h-60 w-60 place-items-center rounded-full"
+                  style={{
+                    background:
+                      "radial-gradient(circle at 50% 38%, #1b4a6e, #123551 70%)",
+                    boxShadow: "0 24px 60px -26px rgb(18 53 81 / 0.55)",
+                  }}
+                >
+                  <div
+                    className="absolute inset-3 rounded-full border"
+                    style={{ borderColor: "var(--accent-soft)", opacity: 0.7 }}
+                  />
+                  <div
+                    className="absolute inset-5 rounded-full border border-dashed"
+                    style={{ borderColor: "var(--accent-soft)", opacity: 0.4 }}
+                  />
+                  <span
+                    className="font-display leading-none"
+                    style={{ fontSize: "5rem", color: "#c6a260" }}
+                  >
+                    ♬
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Répertoire. Une ligne par famille : c'est ce qui donne son sens à la
-            couleur, et accessoirement ce qui rend les recherches indexables. */}
-        {families.length > 0 ? (
+        {/* Professeurs en vedette : les mieux notés, en cartes. */}
+        {featured.length > 0 ? (
           <section className="border-t border-border">
-            <div className="mx-auto max-w-5xl px-4 py-16">
+            <div className="mx-auto max-w-6xl px-4 py-16">
               <div className="m-reveal">
-                <h2 className="text-3xl sm:text-4xl">Le répertoire</h2>
-                <p className="mt-2 text-sm text-muted">
-                  Uniquement ce qui est réellement enseigné aujourd’hui.
-                </p>
+                <SectionHead>Professeurs en vedette</SectionHead>
               </div>
 
-              <ul className="mt-10 divide-y divide-border border-y border-border">
-                {families.map(({ family, items }, index) => (
-                  <li
-                    key={family}
-                    className="m-reveal grid gap-4 py-6 sm:grid-cols-[11rem_1fr] sm:gap-8"
+              <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {featured.map((teacher, index) => (
+                  <div
+                    key={teacher.slug}
+                    className="m-reveal h-full"
                     style={reveal(index)}
                   >
-                    <h3 className="flex items-baseline gap-2.5 text-sm font-semibold uppercase tracking-[0.14em]">
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "h-2 w-2 shrink-0 translate-y-px rounded-full",
-                          FAMILY_STYLES[family].dot
-                        )}
-                      />
-                      <span className={FAMILY_STYLES[family].text}>
-                        {FAMILY_LABELS[family]}
-                      </span>
-                    </h3>
-
-                    <ul className="flex flex-wrap gap-2">
-                      {items.map((instrument) => (
-                        <li key={instrument.slug}>
-                          <Link
-                            href={`/profs?instrument=${instrument.slug}`}
-                            className={cn(
-                              "flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0",
-                              FAMILY_STYLES[family].chip
-                            )}
-                          >
-                            {instrument.name}
-                            <span className="text-xs opacity-60">
-                              {instrument._count.teachers}
-                            </span>
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
+                    <FeaturedCard teacher={teacher} />
+                  </div>
                 ))}
-              </ul>
-
-              {cities.length > 0 ? (
-                <div className="m-reveal mt-10">
-                  <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-subtle">
-                    Par ville
-                  </h3>
-                  {/* Liste courante plutôt que pastilles : la ville n'est pas
-                      une famille, elle n'a donc pas de teinte à porter. */}
-                  <p className="mt-3 text-lg leading-relaxed">
-                    {cities.map((row, index) => (
-                      <span key={row.city}>
-                        {index > 0 ? (
-                          <span aria-hidden className="text-border-strong">
-                            {" · "}
-                          </span>
-                        ) : null}
-                        <Link
-                          href={`/profs?ville=${encodeURIComponent(row.city!)}`}
-                          className="underline decoration-border-strong decoration-2 underline-offset-4 transition-colors hover:decoration-accent"
-                        >
-                          {row.city}
-                        </Link>
-                      </span>
-                    ))}
-                  </p>
-                </div>
-              ) : null}
+              </div>
             </div>
           </section>
         ) : null}
@@ -370,7 +322,9 @@ export default async function HomePage() {
             font le même travail qu'une carte, sans la boîte. */}
         <section className="border-t border-border bg-surface">
           <div className="mx-auto max-w-5xl px-4 py-16">
-            <h2 className="m-reveal text-3xl sm:text-4xl">Comment ça marche</h2>
+            <div className="m-reveal">
+              <SectionHead>Comment ça marche</SectionHead>
+            </div>
 
             <ol className="mt-10 grid gap-px overflow-hidden rounded-[var(--radius)] border border-border bg-border sm:grid-cols-3">
               {STEPS.map((step, index) => (
@@ -410,20 +364,21 @@ export default async function HomePage() {
               style={{
                 opacity: "var(--spot-opacity, 0)",
                 background:
-                  "radial-gradient(26rem 26rem at var(--spot-x, 50%) var(--spot-y, 50%), rgb(45 118 91 / 0.3), transparent 70%)",
+                  "radial-gradient(26rem 26rem at var(--spot-x, 50%) var(--spot-y, 50%), rgb(198 162 96 / 0.3), transparent 70%)",
               }}
             />
 
             <div aria-hidden className="absolute inset-x-0 top-0">
               <Staff
-                line="rgb(255 255 255 / 0.28)"
-                head="rgb(255 255 255 / 0.85)"
+                line="rgb(255 255 255 / 0.22)"
+                head="rgb(198 162 96 / 0.9)"
               />
             </div>
 
             <div className="relative mx-auto max-w-5xl px-4 py-20">
-              <p className="text-xs uppercase tracking-[0.22em] text-white/45">
-                Vous enseignez ?
+              <p className="flex items-center gap-2 text-xs uppercase tracking-[0.22em]">
+                <span aria-hidden className="text-base text-accent">❧</span>
+                <span className="text-accent">Vous enseignez ?</span>
               </p>
               {/* Pas de largeur maximale : elle reprenait la main sur le saut de
                   ligne explicite et laissait « agenda, » seul sur sa ligne. */}
@@ -471,6 +426,95 @@ export default async function HomePage() {
         </footer>
       </main>
     </>
+  );
+}
+
+/**
+ * En-tête de section façon programme de concert : un fleuron doré, le titre en
+ * Cormorant, puis un filet qui file jusqu'au bord.
+ */
+function SectionHead({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span aria-hidden className="text-xl leading-none text-accent">
+        ❧
+      </span>
+      <h2 className="text-3xl sm:text-4xl">{children}</h2>
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/**
+ * Carte d'un prof en vedette. La photo si elle existe, sinon un sceau bleu
+ * gravé à l'initiale ; nom en Cormorant, instruments en italique, note dorée.
+ */
+function FeaturedCard({ teacher }: { teacher: SearchResult }) {
+  const name = teacher.name ?? "Professeur";
+  const place = teacher.city ?? (teacher.teachesOnline ? "En visio" : null);
+
+  return (
+    <Link
+      href={`/profs/${teacher.slug}`}
+      className="group flex h-full flex-col rounded-xl border border-border bg-elevated p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg"
+    >
+      <div className="flex items-center gap-3">
+        {teacher.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={teacher.image}
+            alt=""
+            className="h-14 w-14 shrink-0 rounded-full border border-border object-cover"
+          />
+        ) : (
+          <span
+            aria-hidden
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-accent-soft font-display text-xl font-semibold"
+            style={{
+              background:
+                "radial-gradient(circle at 50% 38%, #1b4a6e, #123551 72%)",
+              color: "#c6a260",
+            }}
+          >
+            {name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <div className="min-w-0">
+          <p className="truncate font-display text-xl font-semibold leading-tight text-primary">
+            {name}
+          </p>
+          {place ? (
+            <p className="truncate text-xs uppercase tracking-[0.12em] text-subtle">
+              {place}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {teacher.instruments.length > 0 ? (
+        <p className="mt-3 line-clamp-2 font-display text-lg italic leading-snug text-foreground">
+          {teacher.instruments
+            .slice(0, 3)
+            .map((instrument) => instrument.name)
+            .join(" · ")}
+        </p>
+      ) : null}
+
+      <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
+        <span className="flex items-center gap-1 text-sm text-muted">
+          <span className="text-accent">★</span>
+          {teacher.rating.average !== null
+            ? `${teacher.rating.average.toFixed(1).replace(".", ",")} (${teacher.rating.count})`
+            : "Nouveau"}
+        </span>
+        {teacher.hourlyRateCents !== null ? (
+          <span className="font-display text-lg font-semibold text-primary">
+            {Math.round(teacher.hourlyRateCents / 100)} €
+            <span className="font-sans text-xs font-normal text-muted">/h</span>
+          </span>
+        ) : null}
+      </div>
+    </Link>
   );
 }
 

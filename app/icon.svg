@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="SiNote">
-  <rect width="64" height="64" rx="15" fill="#2d765b" />
+  <rect width="64" height="64" rx="15" fill="#123551" />
   <g fill="#ffffff">
     <rect x="33.5" y="14" width="4" height="31" rx="2" />
     <path d="M37.5 14c9 2 13 9 8.5 16.5 1.6-5.7-1.2-10-8.5-10.5z" />

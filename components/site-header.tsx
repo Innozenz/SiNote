@@ -1,7 +1,8 @@
 import { headers } from "next/headers";
 import Link from "next/link";
-import { Music4, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
+import { SiteLogo } from "@/components/site-logo";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/auth";
 
@@ -21,11 +22,10 @@ export async function SiteHeader() {
   const isSignedIn = Boolean(session?.user);
 
   return (
-    <header className="border-b border-border bg-white/80 backdrop-blur-md">
+    <header className="border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
-          <Music4 className="h-5 w-5 text-primary" />
-          SiNote
+        <Link href="/" aria-label="SiNote — accueil">
+          <SiteLogo />
         </Link>
 
         <nav className="flex items-center gap-2">

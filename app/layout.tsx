@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter, Pinyon_Script } from "next/font/google";
+import { Cormorant, Inter, Pinyon_Script } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -11,13 +11,16 @@ const sans = Inter({
 });
 
 /**
- * Titres : c'est là que vit le caractère de la marque. Fraunces, un serif
- * d'affichage variable réservé aux h1-h3, suffit à donner une voix sans
- * alourdir le chargement.
+ * Titres : c'est là que vit le caractère de la marque. Cormorant, un serif
+ * haute-classe à fort contraste, réservé aux h1-h3 — registre « affiche de
+ * concert / conservatoire ». On charge quelques graisses et l'italique (accents
+ * dorés) plutôt que tout le fichier.
  */
-const display = Fraunces({
+const display = Cormorant({
   variable: "--font-display",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 

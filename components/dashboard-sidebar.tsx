@@ -15,7 +15,6 @@ import {
   type LucideIcon,
   Menu,
   MessageSquare,
-  Music4,
   Search,
   Star,
   TrendingUp,
@@ -24,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 
+import { SiteLogo } from "@/components/site-logo";
 import { UserNav, type NavUser } from "@/components/user-nav";
 import { cn } from "@/lib/utils";
 
@@ -129,11 +129,13 @@ export function DashboardSidebar({
         className={cn(
           ITEM_CLASS,
           active
-            ? "border-primary bg-sidebar-active text-sidebar-foreground"
+            ? "border-accent bg-sidebar-active text-sidebar-foreground"
             : "text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        {/* Or sur l'item sélectionné : liseré gauche doré (ci-dessus) et icône
+            dorée. Le libellé reste clair pour rester lisible sur le bleu. */}
+        <Icon className={cn("h-4 w-4 shrink-0", active && "text-accent")} />
         <span className="flex-1">{item.label}</span>
         {badge > 0 ? (
           <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
@@ -159,13 +161,8 @@ export function DashboardSidebar({
   );
 
   const brand = (
-    <Link
-      href={home}
-      onClick={() => setOpen(false)}
-      className="flex items-center gap-2 font-semibold"
-    >
-      <Music4 className="h-5 w-5 text-primary" />
-      SiNote
+    <Link href={home} onClick={() => setOpen(false)} aria-label="SiNote — accueil">
+      <SiteLogo onDark />
     </Link>
   );
 
