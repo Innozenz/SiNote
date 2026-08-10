@@ -149,6 +149,7 @@ export default async function TeacherReportsPage({
     isTrial: b.isTrial,
     content: b.report?.content ? sanitizeReportHtml(b.report.content) : "",
     attachments: b.report?.attachments ?? [],
+    studentHref: `/dashboard/prof/eleves/${b.student.id}`,
   }));
 
   return (

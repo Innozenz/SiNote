@@ -21,6 +21,7 @@ import {
   MapPin,
   MessageSquare,
   Sparkles,
+  User,
   X,
 } from "lucide-react";
 
@@ -1057,24 +1058,27 @@ function BookingDetail({
         </p>
       )}
 
-      {documentable ? (
-        <Button asChild variant="outline" size="sm" className="self-start">
-          <Link
-            href={`/dashboard/prof/eleves/${row.studentId}?onglet=comptes-rendus#cr-${row.id}`}
-          >
-            <FileText className="mr-2 h-3 w-3" />
-            Compte rendu
+      {/* Accès direct à la fiche de l'élève : son profil complet (onglet par
+          défaut) et, quand le cours est documentable, son compte rendu ancré. */}
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/dashboard/prof/eleves/${row.studentId}`}>
+            <User className="mr-2 h-3 w-3" />
+            Profil de l&apos;élève
           </Link>
         </Button>
-      ) : null}
 
-      <p className="text-xs text-subtle">
-        Le profil complet de l&apos;élève est sur{" "}
-        <Link href="/dashboard/prof/demandes" className="underline">
-          vos demandes
-        </Link>
-        .
-      </p>
+        {documentable ? (
+          <Button asChild variant="outline" size="sm">
+            <Link
+              href={`/dashboard/prof/eleves/${row.studentId}?onglet=comptes-rendus#cr-${row.id}`}
+            >
+              <FileText className="mr-2 h-3 w-3" />
+              Compte rendu
+            </Link>
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

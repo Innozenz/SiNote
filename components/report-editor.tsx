@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   Pencil,
   Square,
   Trash2,
+  User,
 } from "lucide-react";
 
 import { AudioPlayer } from "@/components/audio-player";
@@ -43,6 +45,13 @@ export type ReportEditorLesson = {
   isTrial: boolean;
   content: string;
   attachments: ReportAttachmentView[];
+  /**
+   * Lien vers la fiche de l'élève. Fourni par l'atelier global (tous élèves
+   * confondus), où rejoindre le profil demande sinon de retrouver l'élève à la
+   * main ; absent sur la fiche élève elle-même, où le lien pointerait sur la
+   * page courante.
+   */
+  studentHref?: string;
 };
 
 /**
@@ -294,6 +303,18 @@ export function ReportEditor({
       >
         <div className="overflow-hidden" inert={!open}>
           <div className="flex flex-col gap-4 border-t border-border px-4 py-4">
+            {/* Accès à la fiche de l'élève depuis l'atelier global, où l'on
+                travaille tous élèves confondus. */}
+            {lesson.studentHref ? (
+              <Link
+                href={lesson.studentHref}
+                className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              >
+                <User className="h-3.5 w-3.5" />
+                Voir le profil de l&apos;élève
+              </Link>
+            ) : null}
+
             {/* Texte. Une fois enregistré, il s'affiche en lecture — tel que
                 l'élève le voit — avec un bouton « Modifier ». Tant qu'il est
                 vide, il n'y a rien à lire : le champ reste ouvert. */}
