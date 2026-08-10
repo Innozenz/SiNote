@@ -183,14 +183,14 @@ export default async function HomePage() {
               className="m-drift-a absolute -left-40 -top-56 h-[38rem] w-[38rem] rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgb(18 53 81 / 0.16), transparent 65%)",
+                  "radial-gradient(circle, rgb(18 53 81 / 0.26), transparent 68%)",
               }}
             />
             <div
               className="m-drift-b absolute -right-40 -top-24 h-[32rem] w-[32rem] rounded-full"
               style={{
                 background:
-                  "radial-gradient(circle, rgb(169 127 56 / 0.14), transparent 65%)",
+                  "radial-gradient(circle, rgb(169 127 56 / 0.22), transparent 68%)",
               }}
             />
           </div>
