@@ -64,6 +64,16 @@ const BEAM_THICKNESS = 4;
  */
 const SEQUENCE_SECONDS = 7;
 
+/**
+ * Battue du médaillon.
+ *
+ * Un tempo lent, proche d'un andante : la note bat la mesure sans virer au
+ * clignotant. La note et les ondes qui s'en échappent le partagent via
+ * `--beat` — même procédé que `--sequence` sur la portée, si bien que les deux
+ * ne peuvent pas se désynchroniser.
+ */
+const BEAT_SECONDS = 0.82;
+
 /** Dégradés en style inline : en classe arbitraire, Tailwind découpe la valeur
     aux virgules et croit y voir des utilitaires. */
 const staffLines = (color: string) =>
@@ -248,7 +258,29 @@ export default async function HomePage() {
                 d'un disque bleu de Prusse gravé, note dorée au centre. Remplace
                 la portée-séquenceur ; l'animation vit dans `globals.css`. */}
             <div aria-hidden className="relative hidden lg:block">
-              <div className="relative mx-auto grid h-[340px] w-[340px] place-items-center">
+              <div
+                className="relative mx-auto grid h-[340px] w-[340px] place-items-center"
+                style={{ "--beat": `${BEAT_SECONDS}s` } as CSSProperties}
+              >
+                {/* Ondes de résonance : à chaque temps, un anneau doré s'échappe
+                    du disque — le médaillon « sonne ». Deux anneaux décalés d'un
+                    demi-temps pour une émanation continue. Décoratifs et
+                    invisibles au repos (opacity 0), donc rien à l'écran sous
+                    reduced-motion. */}
+                <span
+                  aria-hidden
+                  className="m-pulse-ring absolute left-1/2 top-1/2 h-60 w-60 -translate-x-1/2 -translate-y-1/2 rounded-full border opacity-0"
+                  style={{ borderColor: "var(--accent)" }}
+                />
+                <span
+                  aria-hidden
+                  className="m-pulse-ring absolute left-1/2 top-1/2 h-60 w-60 -translate-x-1/2 -translate-y-1/2 rounded-full border opacity-0"
+                  style={{
+                    borderColor: "var(--accent)",
+                    animationDelay: `-${BEAT_SECONDS / 2}s`,
+                  }}
+                />
+
                 <div
                   className="m-medallion-ring absolute inset-6 rounded-full border"
                   style={{ borderColor: "var(--accent-soft)" }}
@@ -284,7 +316,7 @@ export default async function HomePage() {
                     style={{ borderColor: "var(--accent-soft)", opacity: 0.4 }}
                   />
                   <span
-                    className="font-display leading-none"
+                    className="m-beat font-display leading-none"
                     style={{ fontSize: "5rem", color: "#c6a260" }}
                   >
                     ♬

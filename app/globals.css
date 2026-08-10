@@ -510,3 +510,55 @@ h3 {
     animation: sinote-medallion-spin 44s linear infinite;
   }
 }
+
+/**
+ * Battue du médaillon : la note bat la mesure et une onde s'en échappe à chaque
+ * temps, comme un disque qui tourne et joue. La note et les ondes partagent
+ * `--beat`, porté par le médaillon — même procédé que `--sequence` sur la
+ * portée : rien ne peut se désynchroniser.
+ *
+ * On anime `scale` (pas `transform`) : les anneaux sont centrés par un
+ * `translate` utilitaire, et Tailwind 4 pilote `scale` et `translate` comme
+ * deux propriétés distinctes — écrit `transform: scale(...)` on écraserait le
+ * centrage. La frappe a une attaque vive puis se pose, portée sur place car
+ * l'ensemble est joué en boucle constante.
+ *
+ * Les ondes sont invisibles au repos (`opacity: 0` sur le nœud) : sous
+ * reduced-motion il ne reste que la note immobile, sans anneau fantôme.
+ */
+@keyframes sinote-beat {
+  0% {
+    scale: 1;
+  }
+  14% {
+    scale: 1.09;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  55% {
+    scale: 1;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes sinote-resonance {
+  0% {
+    opacity: 0.5;
+    scale: 0.82;
+  }
+  100% {
+    opacity: 0;
+    scale: 1.4;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .m-beat {
+    animation: sinote-beat var(--beat, 0.82s) ease-out infinite;
+  }
+
+  .m-pulse-ring {
+    animation: sinote-resonance var(--beat, 0.82s) ease-out infinite;
+  }
+}
