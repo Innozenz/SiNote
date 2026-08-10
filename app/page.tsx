@@ -254,9 +254,11 @@ export default async function HomePage() {
               ) : null}
             </div>
 
-            {/* Médaillon : un anneau doré (étoiles en orbite) qui tourne autour
-                d'un disque bleu de Prusse gravé, note dorée au centre. Remplace
-                la portée-séquenceur ; l'animation vit dans `globals.css`. */}
+            {/* Médaillon : un anneau doré (étoiles en orbite) autour d'un sceau
+                bleu de Prusse gravé qui tourne lentement à contresens, note dorée
+                au centre. La note reste droite et bat la mesure ; le disque résonne
+                à chaque temps. Remplace la portée-séquenceur ; l'animation vit dans
+                `globals.css`. */}
             <div aria-hidden className="relative hidden lg:block">
               <div
                 className="relative mx-auto grid h-[340px] w-[340px] place-items-center"
@@ -299,24 +301,38 @@ export default async function HomePage() {
                   </span>
                 </div>
 
+                {/* Enveloppe fixe : porte l'ombre portée, qui ne doit pas tourner
+                    avec le sceau — une ombre décalée qui pivote donnerait une
+                    source de lumière en orbite. */}
                 <div
                   className="relative grid h-60 w-60 place-items-center rounded-full"
-                  style={{
-                    background:
-                      "radial-gradient(circle at 50% 38%, #1b4a6e, #123551 70%)",
-                    boxShadow: "0 24px 60px -26px rgb(18 53 81 / 0.55)",
-                  }}
+                  style={{ boxShadow: "0 24px 60px -26px rgb(18 53 81 / 0.55)" }}
                 >
+                  {/* Le sceau gravé, qui tourne. Le reflet décentré du dégradé et
+                      le filet pointillé sont ses repères asymétriques : sans eux,
+                      un disque circulaire tournerait sans que rien ne le montre. */}
                   <div
-                    className="absolute inset-3 rounded-full border"
-                    style={{ borderColor: "var(--accent-soft)", opacity: 0.7 }}
-                  />
-                  <div
-                    className="absolute inset-5 rounded-full border border-dashed"
-                    style={{ borderColor: "var(--accent-soft)", opacity: 0.4 }}
-                  />
+                    className="m-seal absolute inset-0 rounded-full"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 50% 38%, #1b4a6e, #123551 70%)",
+                    }}
+                  >
+                    <div
+                      className="absolute inset-3 rounded-full border"
+                      style={{ borderColor: "var(--accent-soft)", opacity: 0.7 }}
+                    />
+                    <div
+                      className="absolute inset-5 rounded-full border border-dashed"
+                      style={{ borderColor: "var(--accent-soft)", opacity: 0.4 }}
+                    />
+                  </div>
+
+                  {/* La note est posée sur le sceau, hors de sa rotation : elle
+                      reste droite et lisible, et bat la mesure. `relative` la place
+                      au-dessus du sceau opaque. */}
                   <span
-                    className="m-beat font-display leading-none"
+                    className="m-beat relative font-display leading-none"
                     style={{ fontSize: "5rem", color: "#c6a260" }}
                   >
                     ♬

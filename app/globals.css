@@ -509,6 +509,14 @@ h3 {
   .m-medallion-ring {
     animation: sinote-medallion-spin 44s linear infinite;
   }
+
+  /* Le sceau tourne à contresens de l'anneau d'étoiles (`reverse`) et deux fois
+     plus lentement : un mouvement d'orrery, les deux sens se répondant. Réutilise
+     la rotation générique. Au repos (reduced-motion), le sceau reste immobile —
+     un emblème droit, état parfaitement lisible. */
+  .m-seal {
+    animation: sinote-medallion-spin 88s linear infinite reverse;
+  }
 }
 
 /**
