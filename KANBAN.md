@@ -17,18 +17,18 @@ Marketplace où des élèves trouvent un prof de musique/chant et réservent des
 - [x] **Relation prof ↔ élève** : fil persistant (modèle `Message`) + note privée (`TeacherStudentNote`), socle des fiches élèves
 
 ### Marketplace public
-- [x] Page d'accueil éditoriale (portée gravée animée, direction artistique)
-- [x] Recherche `/profs` (filtres dans l'URL, classement bayésien, indexable)
+- [x] Page d'accueil (hero **médaillon gravé animé**, **searchbar** instrument/ville, **profs en vedette**, titres à fleuron) — direction « Bleu conservatoire »
+- [x] Recherche `/profs` (filtres dans l'URL, classement bayésien, indexable, **photo du prof dans les résultats**)
 - [x] Fiche prof publique (SEO, JSON-LD, créneaux groupés matin/après-midi/soir)
 - [x] Widget de réservation (créneaux réels, une demande en quelques clics) — **tunnel sans impasse** : appel à l'action selon le visiteur (se connecter / créer un profil élève / réserver), retour sur la fiche après connexion (callbackUrl à travers l'onboarding), sélection conservée, squelette de chargement, confirmation renforcée
 - [x] Âge sur les profils (prof : optionnel et opt-in sur la fiche publique ; élève : affiché sur la fiche)
 
 ### Espace prof
 - [x] Ma fiche (présentation, instruments, tarif, règles de réservation, publier/dépublier)
-- [x] Disponibilités (semaine type + congés)
+- [x] Disponibilités (semaine type + congés, **+ indisponibilités ponctuelles sur une plage horaire**)
 - [x] Demandes de cours (boîte de réception, confirmer/refuser/clôturer)
 - [x] **Photo de profil** (sur `User`, publique côté prof ; traitée par sharp — redim/WebP/EXIF retiré)
-- [x] **Comptes rendus de cours** : écrit par le prof, lu par l'élève, accroché au `Booking`. Pièces jointes images/partitions + notes audio (lecteur sur mesure), en-tête « Cours de … », visionneuse d'images plein écran, **pliage/dépliage animé**
+- [x] **Comptes rendus de cours** : écrit par le prof, lu par l'élève, accroché au `Booking`. **Éditeur riche (TipTap, HTML assaini côté serveur)**, texte en **lecture/édition** (bouton Modifier), pièces jointes **groupées par type** (images/audio/partitions) + notes audio (lecteur sur mesure), visionneuse d'images plein écran, **pliage/dépliage animé**, accès direct **depuis l'agenda**
 - [x] **Fiches élèves** (façon fiche client) : profil, historique, comptes rendus, messages, note privée — en onglets, avec filtres (recherche, instrument, **dates**) et **rédaction/édition des comptes rendus directement depuis la fiche**
 - [x] **Messagerie prof ↔ élève** (asynchrone) : commentaires par compte rendu + fil général, notif e-mail, horodatage. Pièces jointes + notes audio dans les fils, via le stockage
 - [x] Avis reçus + droit de réponse + signalement
@@ -60,16 +60,20 @@ Marketplace où des élèves trouvent un prof de musique/chant et réservent des
 - [x] Modération a posteriori (`/admin/avis`), masquer/restaurer
 - [x] Signalements (le prof signale, la modération tranche)
 
+### Administration
+- [x] **Page utilisateurs** (`/admin/utilisateurs`) : liste de tous les comptes (rôle, infos, activité), recherche/filtre par rôle, **gestion d'accès d'un prof** (offrir/prolonger/révoquer une date — sans appel Stripe)
+- [x] **Administration en capacité** (`User.isAdmin`, **orthogonale au rôle** : un prof/élève peut être admin), promotion manuelle en base (`UPDATE user SET "isAdmin"=true`), premier admin promu
+
 ### Notifications
 - [x] E-mails : demande / confirmation / refus / annulation / avis reçu / **cours déplacé**
 - [x] Rappels 24 h avant un cours : endpoint + table de réclamation + reprise sur échec
 
 ### Design & identité
 - [x] Favicon sur mesure (croche)
-- [x] Palette « ReChord » : encre sur papier chaud, primaire épicéa, accent bronze
-- [x] Polices Inter (corps) + Fraunces (titres)
+- [x] **Refonte « Bleu conservatoire »** : bleu de Prusse / crème chaude / or antique, titres **Cormorant** (corps Inter), logo « sceau », médaillon gravé animé, page d'accueil refondue. Tout via les jetons — la charte à jour est dans `CHARTE-GRAPHIQUE.md`
 - [x] Système de mise en page éditorial (filets, titres démesurés, plus de grilles de cartes) sur tout le site
-- [x] **Barre latérale unique** de tout l'espace connecté (prof / élève / admin) : marque, navigation, compte cliquable — plus d'en-tête, bordure qui délimite la place
+- [x] **Barre latérale unique** de tout l'espace connecté (prof / élève / admin) ; **nav mobile en tiroir burger** (Radix Dialog : focus piégé, Échap, verrou de défilement), item sélectionné en doré
+- [x] **Signature calligraphique** du prénom sur les avis publics (Pinyon Script)
 - [x] **Retours d'action unifiés en toasts** (succès + échecs, réessai / reconnexion) : cycle de vie des cours, comptes rendus, avis, formulaires, agenda
 - [x] Renommage **Noteva → SiNote** (marque + nom du projet)
 
@@ -87,7 +91,6 @@ Marketplace où des élèves trouvent un prof de musique/chant et réservent des
 
 - [ ] **Vérifier un domaine e-mail** — sans lui, les e-mails ne partent qu'à l'adresse du compte en prod ; envisager un émetteur FR (Scaleway TEM, Brevo)
 - [ ] **Planifier le cron des rappels** (Vercel Cron ou GitHub Action) — l'endpoint existe, rien ne l'appelle encore
-- [ ] **Promouvoir un administrateur** (`UPDATE user SET role='ADMIN'`) — sinon la modération et les signalements restent inaccessibles
 - [ ] **Conformité RGPD** — outils FR/UE (Scaleway fr-par déjà en place), consentement du responsable pour les mineurs (photo, audio, fiches), politique de conservation et de suppression
 - [ ] **Régler le ressenti du glisser-déposer** (aimantation, fantôme, détection de colonne) après tests visuels
 - [ ] Version **élève** du suivi (cours à venir / suivis / budget)
