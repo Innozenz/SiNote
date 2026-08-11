@@ -41,9 +41,16 @@ export async function SiteHeader() {
               <Link href="/dashboard">Mon espace</Link>
             </Button>
           ) : (
-            <Button size="sm" asChild>
-              <Link href="/connexion">Se connecter</Link>
-            </Button>
+            <>
+              {/* Vitrine côté profs : inutile pour un utilisateur déjà connecté,
+                  qui a forcément un rôle. */}
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/enseigner">Enseigner</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/connexion">Se connecter</Link>
+              </Button>
+            </>
           )}
         </nav>
       </div>

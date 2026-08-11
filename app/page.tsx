@@ -238,7 +238,7 @@ export default async function HomePage() {
                 <p className="mt-3 text-sm text-muted">
                   Vous enseignez ?{" "}
                   <Link
-                    href="/connexion"
+                    href="/enseigner"
                     className="font-medium text-primary underline-offset-2 hover:underline"
                   >
                     Devenir prof →
@@ -446,13 +446,21 @@ export default async function HomePage() {
 
               {/* Bouton en négatif écrit à la main : les variantes de `Button`
                   sont réglées pour un fond clair, aucune ne tient sur l'encre. */}
-              <Link
-                href="/connexion"
-                className="mt-9 inline-flex h-12 items-center gap-2 rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
-              >
-                Créer ma fiche
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
+              <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
+                <Link
+                  href="/connexion"
+                  className="inline-flex h-12 items-center gap-2 rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
+                >
+                  Créer ma fiche
+                  <ArrowUpRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/enseigner"
+                  className="text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline"
+                >
+                  En savoir plus →
+                </Link>
+              </div>
             </div>
           </Spotlight>
         </section>
