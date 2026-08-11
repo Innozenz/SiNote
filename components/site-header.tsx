@@ -45,7 +45,7 @@ export async function SiteHeader() {
               {/* Vitrine côté profs : inutile pour un utilisateur déjà connecté,
                   qui a forcément un rôle. */}
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/enseigner">Enseigner</Link>
+                <Link href="/enseigner">Devenir prof</Link>
               </Button>
               <Button size="sm" asChild>
                 <Link href="/connexion">Se connecter</Link>
