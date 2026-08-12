@@ -43,24 +43,29 @@ export async function GET(request: Request) {
       ...(instrumentSlug ? { instrument: { slug: instrumentSlug } } : {}),
     },
     select: {
+      id: true,
       status: true,
       startsAt: true,
       endsAt: true,
       priceCents: true,
       isTrial: true,
+      paidAt: true,
       instrument: { select: { name: true } },
-      student: { select: { user: { select: { name: true } } } },
+      student: { select: { id: true, user: { select: { name: true } } } },
     },
   });
 
   const report = computeActivity(
     bookings.map((b) => ({
+      id: b.id,
       status: b.status,
       startsAt: b.startsAt,
       endsAt: b.endsAt,
       priceCents: b.priceCents,
       isTrial: b.isTrial,
+      paidAt: b.paidAt,
       instrumentName: b.instrument.name,
+      studentId: b.student.id,
       studentName: b.student.user.name,
     })),
     period,

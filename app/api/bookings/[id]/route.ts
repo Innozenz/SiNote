@@ -47,12 +47,16 @@ const patchSchema = z
         message: "URL http(s) requise",
       })
       .optional(),
+    // Suivi du règlement hors plateforme, réservé au prof. Aucun débit : on
+    // horodate (payé) ou on efface (non payé) le champ paidAt du cours.
+    paid: z.boolean().optional(),
   })
   .refine(
     (b) =>
       b.action !== undefined ||
       b.teacherNote !== undefined ||
-      b.meetingUrl !== undefined,
+      b.meetingUrl !== undefined ||
+      b.paid !== undefined,
     { message: "Rien à modifier" }
   );
 
@@ -138,6 +142,9 @@ export async function PATCH(
               : {}),
             ...(parsed.data.meetingUrl !== undefined
               ? { meetingUrl: parsed.data.meetingUrl }
+              : {}),
+            ...(parsed.data.paid !== undefined
+              ? { paidAt: parsed.data.paid ? now : null }
               : {}),
           }
         : {};
@@ -291,7 +298,7 @@ function readBooking(id: string, actor: Actor) {
     where: { id },
     select: {
       ...bookingSelect,
-      ...(actor === "teacher" ? { teacherNote: true } : {}),
+      ...(actor === "teacher" ? { teacherNote: true, paidAt: true } : {}),
     },
   });
 }

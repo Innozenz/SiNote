@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   activityCsv,
   computeActivity,
+  openMinutesInPeriod,
   resolvePeriod,
   type ActivityBooking,
 } from "./activity";
+import type { ExceptionInput, RuleInput } from "@/lib/availability";
 
 const PARIS = "Europe/Paris";
 
@@ -13,14 +15,20 @@ const PARIS = "Europe/Paris";
 const NOW = new Date("2026-07-15T10:00:00Z");
 
 function booking(over: Partial<ActivityBooking>): ActivityBooking {
+  // À défaut d'identifiant d'élève explicite, on le dérive du nom : suffit à
+  // distinguer les élèves dans les tests de comptage.
+  const studentName = over.studentName ?? "Alice";
   return {
+    id: "b1",
     status: "COMPLETED",
     startsAt: new Date("2026-07-05T08:00:00Z"),
     endsAt: new Date("2026-07-05T09:00:00Z"),
     priceCents: 4500,
     isTrial: false,
+    paidAt: null,
     instrumentName: "Piano",
-    studentName: "Alice",
+    studentId: studentName.toLowerCase(),
+    studentName,
     ...over,
   };
 }
@@ -87,7 +95,13 @@ describe("computeActivity", () => {
   const period = resolvePeriod({ periode: "mois" }, NOW, PARIS);
 
   const bookings: ActivityBooking[] = [
-    booking({ instrumentName: "Piano", studentName: "Alice", priceCents: 4500 }),
+    booking({
+      instrumentName: "Piano",
+      studentName: "Alice",
+      priceCents: 4500,
+      // Ce cours-là est réglé ; le suivant (Bob) ne l'est pas.
+      paidAt: new Date("2026-07-06T09:00:00Z"),
+    }),
     booking({
       startsAt: new Date("2026-07-06T08:00:00Z"),
       endsAt: new Date("2026-07-06T08:30:00Z"),
@@ -111,7 +125,11 @@ describe("computeActivity", () => {
       endsAt: new Date("2026-07-10T09:00:00Z"),
     }),
     // Absent → journal, ni réalisé ni prévisionnel.
-    booking({ status: "NO_SHOW", startsAt: new Date("2026-07-07T08:00:00Z") }),
+    booking({
+      status: "NO_SHOW",
+      startsAt: new Date("2026-07-07T08:00:00Z"),
+      endsAt: new Date("2026-07-07T09:00:00Z"),
+    }),
     // Annulé → exclu partout.
     booking({ status: "CANCELLED", startsAt: new Date("2026-07-08T08:00:00Z") }),
     // Hors période → ignoré.
@@ -130,6 +148,33 @@ describe("computeActivity", () => {
   it("compte le prévisionnel sur les cours confirmés encore à venir", () => {
     expect(report.projectedCents).toBe(4500);
     expect(report.projectedCount).toBe(1);
+  });
+
+  it("sépare l'encaissé du reste à encaisser sur les cours donnés", () => {
+    // Alice réglée (4500), Bob non (3000).
+    expect(report.paidCents).toBe(4500);
+    expect(report.unpaidCents).toBe(3000);
+    expect(report.unpaidCount).toBe(1);
+    // Le réalisé reste la somme des deux.
+    expect(report.paidCents + report.unpaidCents).toBe(report.realizedCents);
+  });
+
+  it("compte les absences, les annulations et le taux d'absence", () => {
+    expect(report.noShowCount).toBe(1);
+    expect(report.cancelledCount).toBe(1);
+    // 1 absence sur 3 cours qui devaient avoir lieu (2 donnés + 1 absent).
+    expect(report.absenceRate).toBeCloseTo(1 / 3);
+  });
+
+  it("somme les minutes de cours écoulées pour le remplissage", () => {
+    // 60 (Alice 5 juil) + 30 (Bob 6 juil) + 60 (confirmé passé 10 juil) +
+    // 60 (absent 7 juil) ; le confirmé du 20 juil est à venir, l'annulé et le
+    // hors-période sont exclus.
+    expect(report.bookedMinutes).toBe(210);
+  });
+
+  it("compte les élèves distincts vus sur la période", () => {
+    expect(report.studentCount).toBe(2);
   });
 
   it("répartit le réalisé par instrument, du plus rémunérateur au moins", () => {
@@ -161,6 +206,59 @@ describe("computeActivity", () => {
       "COMPLETED", // 5 juillet
     ]);
     expect(report.journal.every((r) => r.status !== "CANCELLED")).toBe(true);
+  });
+});
+
+describe("openMinutesInPeriod", () => {
+  const noExceptions: ExceptionInput[] = [];
+
+  it("somme les ouvertures des jours écoulés d'une période passée", () => {
+    // Lundi 9h–12h = 180 min. Fenêtre du lundi 6 au mercredi 8 juillet 2026,
+    // entièrement passée (NOW = 15 juillet) : seul le lundi porte la règle.
+    const rules: RuleInput[] = [
+      { weekday: 1, startMinute: 540, endMinute: 720 },
+    ];
+    const period = resolvePeriod(
+      { periode: "perso", debut: "2026-07-06", fin: "2026-07-08" },
+      NOW,
+      PARIS
+    );
+    expect(openMinutesInPeriod(rules, noExceptions, period, NOW, PARIS)).toBe(180);
+  });
+
+  it("borne le jour en cours à l'heure courante", () => {
+    // NOW = mercredi 15 juillet, 12:00 à Paris. Règle du mercredi 9h–18h :
+    // seules les heures écoulées (9h→12h = 180 min) comptent aujourd'hui.
+    const rules: RuleInput[] = [
+      { weekday: 3, startMinute: 540, endMinute: 1080 },
+    ];
+    const period = resolvePeriod(
+      { periode: "perso", debut: "2026-07-15", fin: "2026-07-15" },
+      NOW,
+      PARIS
+    );
+    expect(openMinutesInPeriod(rules, noExceptions, period, NOW, PARIS)).toBe(180);
+  });
+
+  it("retire un congé posé sur une ouverture", () => {
+    const rules: RuleInput[] = [
+      { weekday: 1, startMinute: 540, endMinute: 720 },
+    ];
+    // Congé de 10h à 11h le lundi 6 juillet : 180 − 60 = 120 min ouvertes.
+    const exceptions: ExceptionInput[] = [
+      {
+        date: new Date("2026-07-06T00:00:00Z"),
+        type: "BLOCKED",
+        startMinute: 600,
+        endMinute: 660,
+      },
+    ];
+    const period = resolvePeriod(
+      { periode: "perso", debut: "2026-07-06", fin: "2026-07-08" },
+      NOW,
+      PARIS
+    );
+    expect(openMinutesInPeriod(rules, exceptions, period, NOW, PARIS)).toBe(120);
   });
 });
 

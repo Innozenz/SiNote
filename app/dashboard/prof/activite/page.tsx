@@ -1,7 +1,10 @@
+import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 import { ActivityControls } from "@/components/activity-controls";
+import { ActivityPaidToggle } from "@/components/activity-paid-toggle";
 import { PageTitle, SectionTitle } from "@/components/editorial";
 import { Badge } from "@/components/ui/badge";
 import { auth } from "@/lib/auth";
@@ -11,16 +14,18 @@ import {
   formatEuros,
   formatHours,
   JOURNAL_STATUS_LABELS,
+  openMinutesInPeriod,
   PERIOD_LABELS,
   resolvePeriod,
   type Breakdown,
 } from "@/lib/teacher/activity";
 
 /**
- * Pilotage d'activité du prof : revenus, cours, répartitions et journal sur une
- * période, avec filtres. Server Component — le prof arrive sur ses chiffres,
- * sans état de chargement. La logique (bornes de période dans son fuseau,
- * agrégats) vit dans `lib/teacher/activity.ts`, pure et testée.
+ * Pilotage d'activité du prof : revenus, encaissement, remplissage, absences,
+ * élèves, et journal sur une période, avec filtres. Server Component — le prof
+ * arrive sur ses chiffres, sans état de chargement. La logique (bornes de
+ * période dans son fuseau, agrégats, heures ouvertes) vit dans
+ * `lib/teacher/activity.ts`, pure et testée.
  */
 export default async function ActivitePage({
   searchParams,
@@ -48,6 +53,8 @@ export default async function ActivitePage({
 
   if (!user.teacherProfile) redirect("/dashboard");
 
+  const teacherId = user.teacherProfile.id;
+  const timezone = user.timezone;
   const params = await searchParams;
   const first = (key: string) =>
     typeof params[key] === "string" ? (params[key] as string) : null;
@@ -56,51 +63,128 @@ export default async function ActivitePage({
   const period = resolvePeriod(
     { periode: first("periode"), debut: first("debut"), fin: first("fin") },
     now,
-    user.timezone
+    timezone
   );
   const instrumentSlug = first("instrument");
+  const instrumentWhere = instrumentSlug
+    ? { instrument: { slug: instrumentSlug } }
+    : {};
 
-  const bookings = await prisma.booking.findMany({
-    where: {
-      teacherId: user.teacherProfile.id,
-      startsAt: { gte: period.start, lt: period.end },
-      status: { in: ["COMPLETED", "CONFIRMED", "NO_SHOW"] },
-      ...(instrumentSlug ? { instrument: { slug: instrumentSlug } } : {}),
-    },
-    select: {
-      status: true,
-      startsAt: true,
-      endsAt: true,
-      priceCents: true,
-      isTrial: true,
-      instrument: { select: { name: true } },
-      student: { select: { user: { select: { name: true } } } },
-    },
-  });
+  // Période précédente de même durée, immédiatement antérieure — sert aux
+  // deltas (« +12 % vs période précédente »). Vaut pour tous les présets, y
+  // compris personnalisé.
+  const periodLength = period.end.getTime() - period.start.getTime();
+  const prevStart = new Date(period.start.getTime() - periodLength);
+
+  const [bookings, rules, exceptions, firstLessons, prevCompleted] =
+    await Promise.all([
+      // Statuts élargis : le journal ne retient que donnés/à venir/absents,
+      // mais les annulations et les cours en attente nourrissent le taux
+      // d'absence et le remplissage.
+      prisma.booking.findMany({
+        where: {
+          teacherId,
+          startsAt: { gte: period.start, lt: period.end },
+          status: {
+            in: [
+              "COMPLETED",
+              "CONFIRMED",
+              "NO_SHOW",
+              "PENDING",
+              "CANCELLED",
+              "DECLINED",
+            ],
+          },
+          ...instrumentWhere,
+        },
+        select: {
+          id: true,
+          status: true,
+          startsAt: true,
+          endsAt: true,
+          priceCents: true,
+          isTrial: true,
+          paidAt: true,
+          instrument: { select: { name: true } },
+          student: { select: { id: true, user: { select: { name: true } } } },
+        },
+      }),
+      prisma.availabilityRule.findMany({
+        where: { teacherId },
+        select: {
+          weekday: true,
+          startMinute: true,
+          endMinute: true,
+          validFrom: true,
+          validUntil: true,
+        },
+      }),
+      prisma.availabilityException.findMany({
+        where: {
+          teacherId,
+          date: { gte: civilDate(period.startKey), lte: civilDate(period.endKey) },
+        },
+        select: { date: true, type: true, startMinute: true, endMinute: true },
+      }),
+      // Premier cours (réel : à venir, donné ou manqué) de chaque élève, tous
+      // temps confondus : un élève est « nouveau » si ce premier cours tombe
+      // dans la période.
+      prisma.booking.groupBy({
+        by: ["studentId"],
+        where: {
+          teacherId,
+          status: { in: ["CONFIRMED", "COMPLETED", "NO_SHOW"] },
+          ...instrumentWhere,
+        },
+        _min: { startsAt: true },
+      }),
+      prisma.booking.findMany({
+        where: {
+          teacherId,
+          status: "COMPLETED",
+          startsAt: { gte: prevStart, lt: period.start },
+          ...instrumentWhere,
+        },
+        select: { priceCents: true },
+      }),
+    ]);
 
   const report = computeActivity(
     bookings.map((b) => ({
+      id: b.id,
       status: b.status,
       startsAt: b.startsAt,
       endsAt: b.endsAt,
       priceCents: b.priceCents,
       isTrial: b.isTrial,
+      paidAt: b.paidAt,
       instrumentName: b.instrument.name,
+      studentId: b.student.id,
       studentName: b.student.user.name,
     })),
     period,
     now,
-    user.timezone
+    timezone
   );
 
-  const instruments = user.teacherProfile.instruments.map((i) => i.instrument);
+  const openMinutes = openMinutesInPeriod(rules, exceptions, period, now, timezone);
+  const fillRate =
+    openMinutes > 0 ? report.bookedMinutes / openMinutes : null;
 
-  const stats = [
-    { label: "Revenus réalisés", value: formatEuros(report.realizedCents) },
-    { label: "Prévu (à venir)", value: formatEuros(report.projectedCents) },
-    { label: "Cours donnés", value: String(report.realizedCount) },
-    { label: "Panier moyen", value: formatEuros(report.avgCents) },
-  ];
+  const newStudentCount = firstLessons.filter(
+    (row) =>
+      row._min.startsAt != null &&
+      row._min.startsAt >= period.start &&
+      row._min.startsAt < period.end
+  ).length;
+
+  const prevRealizedCents = prevCompleted.reduce(
+    (acc, b) => acc + (b.priceCents ?? 0),
+    0
+  );
+  const prevRealizedCount = prevCompleted.length;
+
+  const instruments = user.teacherProfile.instruments.map((i) => i.instrument);
 
   const maxMonth = Math.max(1, ...report.byMonth.map((m) => m.cents));
   const isEmpty = report.journal.length === 0;
@@ -113,8 +197,11 @@ export default async function ActivitePage({
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: user.timezone,
+      timeZone: timezone,
     });
+
+  const percent = (value: number | null) =>
+    value == null ? "—" : `${Math.round(value * 100)} %`;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
@@ -130,19 +217,77 @@ export default async function ActivitePage({
       </header>
 
       {/* Chiffres clés de la période. */}
-      <section>
+      <section className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
-          {stats.map((stat) => (
-            <div key={stat.label} className="bg-background p-5">
-              <p className="font-display text-3xl font-semibold leading-none text-foreground">
-                {stat.value}
-              </p>
-              <p className="mt-2 text-sm text-muted">{stat.label}</p>
-            </div>
-          ))}
+          <StatCell
+            label="Revenus réalisés"
+            value={formatEuros(report.realizedCents)}
+            trend={
+              <Trend current={report.realizedCents} previous={prevRealizedCents} />
+            }
+          />
+          <StatCell
+            label="Reste à encaisser"
+            value={formatEuros(report.unpaidCents)}
+            accent={report.unpaidCents > 0}
+            hint={
+              report.unpaidCount > 0
+                ? `${report.unpaidCount} cours à régler`
+                : "Tout est encaissé"
+            }
+          />
+          <StatCell
+            label="Prévu (à venir)"
+            value={formatEuros(report.projectedCents)}
+            hint={
+              report.projectedCount > 0
+                ? `${report.projectedCount} cours confirmés`
+                : undefined
+            }
+          />
+          <StatCell
+            label="Cours donnés"
+            value={String(report.realizedCount)}
+            trend={
+              <Trend current={report.realizedCount} previous={prevRealizedCount} />
+            }
+          />
         </div>
-        <p className="mt-2 text-xs text-subtle">
-          {`${PERIOD_LABELS[period.preset]} · ${formatHours(report.taughtMinutes)} enseignées. Le réalisé ne compte que les cours clôturés.`}
+
+        {/* Indicateurs secondaires. */}
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+          <MiniStat label="Panier moyen" value={formatEuros(report.avgCents)} />
+          <MiniStat
+            label="Taux de remplissage"
+            value={percent(fillRate)}
+            hint={
+              openMinutes > 0
+                ? `${formatHours(report.bookedMinutes)} sur ${formatHours(openMinutes)} ouvertes`
+                : "Aucune ouverture passée"
+            }
+          />
+          <MiniStat
+            label="Taux d'absence"
+            value={percent(report.absenceRate)}
+            hint={
+              report.noShowCount + report.cancelledCount > 0
+                ? `${report.noShowCount} absence(s) · ${report.cancelledCount} annulation(s)`
+                : "Aucune"
+            }
+          />
+          <MiniStat
+            label="Élèves"
+            value={String(report.studentCount)}
+            hint={
+              newStudentCount > 0
+                ? `dont ${newStudentCount} nouveau${newStudentCount > 1 ? "x" : ""}`
+                : "aucun nouveau"
+            }
+          />
+        </div>
+
+        <p className="text-xs text-subtle">
+          {`${PERIOD_LABELS[period.preset]} · ${formatHours(report.taughtMinutes)} enseignées. Le réalisé ne compte que les cours clôturés ; l'encaissement se marque au journal.`}
         </p>
       </section>
 
@@ -195,9 +340,9 @@ export default async function ActivitePage({
           <section className="flex flex-col gap-4">
             <SectionTitle>Journal des cours</SectionTitle>
             <ul className="divide-y divide-border border-y border-border">
-              {report.journal.slice(0, JOURNAL_CAP).map((row, index) => (
+              {report.journal.slice(0, JOURNAL_CAP).map((row) => (
                 <li
-                  key={index}
+                  key={row.id}
                   className="flex items-start justify-between gap-4 py-3"
                 >
                   <div className="min-w-0">
@@ -215,20 +360,19 @@ export default async function ActivitePage({
                       {` · ${row.durationMin} min`}
                     </p>
                   </div>
-                  <div className="shrink-0 text-right">
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <p className="font-medium">{formatEuros(row.cents)}</p>
-                    <Badge
-                      variant={
-                        row.status === "COMPLETED"
-                          ? "success"
-                          : row.status === "NO_SHOW"
-                            ? "warning"
-                            : "secondary"
-                      }
-                      className="mt-1"
-                    >
-                      {JOURNAL_STATUS_LABELS[row.status] ?? row.status}
-                    </Badge>
+                    {/* Un cours donné se règle ici même ; les autres n'affichent
+                        que leur état (pas d'encaissement à suivre). */}
+                    {row.counted ? (
+                      <ActivityPaidToggle bookingId={row.id} paid={row.paid} />
+                    ) : (
+                      <Badge
+                        variant={row.status === "NO_SHOW" ? "warning" : "secondary"}
+                      >
+                        {JOURNAL_STATUS_LABELS[row.status] ?? row.status}
+                      </Badge>
+                    )}
                   </div>
                 </li>
               ))}
@@ -242,6 +386,87 @@ export default async function ActivitePage({
         </>
       )}
     </div>
+  );
+}
+
+/** Clé civile → Date à minuit UTC, la forme d'une colonne `@db.Date`. */
+function civilDate(key: string): Date {
+  return new Date(`${key}T00:00:00Z`);
+}
+
+/** Cellule de chiffre clé. `accent` la met en avant quand elle appelle une action. */
+function StatCell({
+  label,
+  value,
+  hint,
+  trend,
+  accent,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  trend?: ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <div className="bg-background p-5">
+      <p
+        className={`font-display text-3xl font-semibold leading-none ${accent ? "text-accent" : "text-foreground"}`}
+      >
+        {value}
+      </p>
+      <p className="mt-2 text-sm text-muted">{label}</p>
+      {trend ?? (hint ? <p className="mt-1 text-xs text-subtle">{hint}</p> : null)}
+    </div>
+  );
+}
+
+/** Indicateur secondaire, plus discret que les chiffres clés. */
+function MiniStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="bg-background p-4">
+      <p className="text-xs uppercase tracking-wide text-subtle">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+      {hint ? <p className="mt-0.5 text-xs text-subtle">{hint}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * Variation par rapport à la période précédente. Une hausse est verte pour un
+ * revenu comme pour un nombre de cours. Pas de repère quand la période
+ * précédente était vide : « +∞ % » n'apprend rien.
+ */
+function Trend({ current, previous }: { current: number; previous: number }) {
+  if (previous === 0) {
+    return current > 0 ? (
+      <p className="mt-1 text-xs text-success">Nouveau sur la période</p>
+    ) : null;
+  }
+
+  const delta = (current - previous) / previous;
+  if (Math.round(delta * 100) === 0) {
+    return <p className="mt-1 text-xs text-subtle">Stable vs période précédente</p>;
+  }
+
+  const up = delta > 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+
+  return (
+    <p
+      className={`mt-1 flex items-center gap-0.5 text-xs ${up ? "text-success" : "text-danger"}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {`${up ? "+" : ""}${Math.round(delta * 100)} % vs période précédente`}
+    </p>
   );
 }
 

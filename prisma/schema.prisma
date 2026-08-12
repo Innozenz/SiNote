@@ -524,6 +524,13 @@ model Booking {
   // les statistiques du prof — aucun encaissement en ligne.
   priceCents Int?
 
+  // Suivi du règlement hors plateforme. L'élève paie le prof en direct : ce
+  // champ note *quand* le prof a marqué le cours comme réglé, rien de plus —
+  // jamais une transaction, aucun débit. Nul = pas encore encaissé. C'est ce
+  // qui distingue « cours donné » de « argent reçu » dans le pilotage
+  // d'activité (encaissé vs reste à encaisser).
+  paidAt DateTime?
+
   studentMessage String? // message joint à la demande
   teacherNote    String? // note privée du prof
   meetingUrl     String? // visio

@@ -1,4 +1,12 @@
-import { addDays, civilDateKeyInZone, formatKey, wallClockToInstant } from "@/lib/availability/zone";
+import { dayOpenings, type ExceptionInput, type RuleInput } from "@/lib/availability";
+import {
+  addDays,
+  civilDateKeyInZone,
+  formatKey,
+  localMinutesInZone,
+  MINUTES_PER_DAY,
+  wallClockToInstant,
+} from "@/lib/availability/zone";
 
 /**
  * Pilotage d'activité du prof : période, agrégats, journal, CSV.
@@ -134,12 +142,16 @@ export function resolvePeriod(
 }
 
 export type ActivityBooking = {
+  id: string;
   status: string;
   startsAt: Date;
   endsAt: Date;
   priceCents: number | null;
   isTrial: boolean;
+  /** Instant où le prof a marqué le cours réglé. Nul = pas encore encaissé. */
+  paidAt: Date | null;
   instrumentName: string;
+  studentId: string;
   studentName: string | null;
 };
 
@@ -147,6 +159,7 @@ export type Breakdown = { label: string; cents: number; count: number };
 export type MonthBar = { key: string; label: string; cents: number; count: number };
 
 export type JournalRow = {
+  id: string;
   startsAt: Date;
   status: string;
   studentName: string;
@@ -154,6 +167,8 @@ export type JournalRow = {
   durationMin: number;
   cents: number;
   isTrial: boolean;
+  /** Réglé par l'élève (marqué par le prof). Pertinent pour les seuls cours donnés. */
+  paid: boolean;
   /** Compté dans le réalisé (cours clôturé). */
   counted: boolean;
 };
@@ -161,10 +176,33 @@ export type JournalRow = {
 export type ActivityReport = {
   realizedCents: number;
   realizedCount: number;
+  /** Part du réalisé déjà encaissée (cours donné **et** marqué payé). */
+  paidCents: number;
+  /** Part du réalisé encore due — le « reste à encaisser ». */
+  unpaidCents: number;
+  unpaidCount: number;
   taughtMinutes: number;
   projectedCents: number;
   projectedCount: number;
   avgCents: number;
+  /** Cours marqués absents sur la période. */
+  noShowCount: number;
+  /** Cours annulés ou refusés sur la période (par l'une ou l'autre partie). */
+  cancelledCount: number;
+  /**
+   * Part d'absences parmi les cours qui devaient avoir lieu
+   * (donnés + absents). `null` si aucun cours à ce jour — pas de taux à afficher.
+   */
+  absenceRate: number | null;
+  /**
+   * Minutes de cours réellement posées sur le temps **écoulé** de la période
+   * (cours qui occupaient un créneau et ont déjà commencé). Numérateur du taux
+   * de remplissage — le dénominateur (heures ouvertes) se calcule à part, il
+   * dépend des règles de dispo.
+   */
+  bookedMinutes: number;
+  /** Nombre d'élèves distincts vus sur la période (cours donnés/à venir/absents). */
+  studentCount: number;
   byInstrument: Breakdown[];
   byStudent: Breakdown[];
   byMonth: MonthBar[];
@@ -173,6 +211,17 @@ export type ActivityReport = {
 
 /** Statuts retenus au journal — les cours qui ont eu lieu ou auront lieu. */
 const JOURNAL_STATUSES = new Set(["COMPLETED", "CONFIRMED", "NO_SHOW"]);
+
+/** Statuts qui occupent un créneau (numérateur du remplissage). */
+const OCCUPYING_STATUSES = new Set([
+  "PENDING",
+  "CONFIRMED",
+  "COMPLETED",
+  "NO_SHOW",
+]);
+
+/** Un cours qui n'aura pas lieu : sa trace compte au dénominateur des absences ? Non — il a libéré son créneau. */
+const CANCELLED_STATUSES = new Set(["CANCELLED", "DECLINED"]);
 
 function durationMin(booking: { startsAt: Date; endsAt: Date }): number {
   return Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / 60000);
@@ -249,6 +298,39 @@ export function computeActivity(
   const projectedCents = projected.reduce((acc, b) => acc + (b.priceCents ?? 0), 0);
   const taughtMinutes = completed.reduce((acc, b) => acc + durationMin(b), 0);
 
+  // Encaissé vs reste à encaisser : le réalisé compte l'argent *gagné* (cours
+  // donné), pas l'argent *reçu*. L'élève règle hors plateforme, souvent en
+  // décalé — c'est cette différence que le prof vient piloter.
+  const paid = completed.filter((b) => b.paidAt != null);
+  const unpaid = completed.filter((b) => b.paidAt == null);
+  const paidCents = paid.reduce((acc, b) => acc + (b.priceCents ?? 0), 0);
+  const unpaidCents = unpaid.reduce((acc, b) => acc + (b.priceCents ?? 0), 0);
+
+  const noShowCount = inRange.filter((b) => b.status === "NO_SHOW").length;
+  const cancelledCount = inRange.filter((b) =>
+    CANCELLED_STATUSES.has(b.status)
+  ).length;
+  const absenceDenom = completed.length + noShowCount;
+  const absenceRate = absenceDenom === 0 ? null : noShowCount / absenceDenom;
+
+  // Remplissage : minutes de cours déjà commencés sur la période, bornées à
+  // `now` (un cours en cours ne compte que pour sa part écoulée), pour un
+  // rapport cohérent avec les heures ouvertes écoulées.
+  const bookedMinutes = inRange
+    .filter(
+      (b) => OCCUPYING_STATUSES.has(b.status) && b.startsAt.getTime() < now.getTime()
+    )
+    .reduce((acc, b) => {
+      const end = Math.min(b.endsAt.getTime(), now.getTime());
+      return acc + Math.max(0, Math.round((end - b.startsAt.getTime()) / 60000));
+    }, 0);
+
+  const studentCount = new Set(
+    inRange
+      .filter((b) => JOURNAL_STATUSES.has(b.status))
+      .map((b) => b.studentId)
+  ).size;
+
   const monthTotals = new Map<string, { cents: number; count: number }>();
   for (const booking of completed) {
     const key = civilDateKeyInZone(booking.startsAt, timezone).slice(0, 7);
@@ -267,6 +349,7 @@ export function computeActivity(
     .filter((b) => JOURNAL_STATUSES.has(b.status))
     .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime())
     .map((b) => ({
+      id: b.id,
       startsAt: b.startsAt,
       status: b.status,
       studentName: b.studentName ?? "Élève",
@@ -274,23 +357,72 @@ export function computeActivity(
       durationMin: durationMin(b),
       cents: b.priceCents ?? 0,
       isTrial: b.isTrial,
+      paid: b.paidAt != null,
       counted: b.status === "COMPLETED",
     }));
 
   return {
     realizedCents,
     realizedCount: completed.length,
+    paidCents,
+    unpaidCents,
+    unpaidCount: unpaid.length,
     taughtMinutes,
     projectedCents,
     projectedCount: projected.length,
     avgCents: completed.length
       ? Math.round(realizedCents / completed.length)
       : 0,
+    noShowCount,
+    cancelledCount,
+    absenceRate,
+    bookedMinutes,
+    studentCount,
     byInstrument: groupByLabel(completed, (b) => b.instrumentName),
     byStudent: groupByLabel(completed, (b) => b.studentName ?? "Élève"),
     byMonth,
     journal,
   };
+}
+
+/**
+ * Minutes d'ouverture sur la partie **écoulée** de la période, dans le fuseau
+ * du prof — le dénominateur du taux de remplissage.
+ *
+ * Pur et testable comme le reste : parcourt les jours civils de la période,
+ * borne le dernier jour à `now` (les ouvertures encore à venir aujourd'hui ne
+ * comptent pas, pour rester cohérent avec les minutes réservées), et somme les
+ * ouvertures que `dayOpenings` retient (règles − congés). Comme l'agenda, on
+ * raisonne en minutes murales : le changement d'heure ne fausse que deux jours
+ * par an, ce qui illustre sans prétendre au chronomètre.
+ */
+export function openMinutesInPeriod(
+  rules: RuleInput[],
+  exceptions: ExceptionInput[],
+  period: Period,
+  now: Date,
+  timezone: string
+): number {
+  const todayKey = civilDateKeyInZone(now, timezone);
+  const nowMinutes = localMinutesInZone(now, timezone);
+  // La période s'arrête à aujourd'hui : au-delà, rien n'est encore « écoulé ».
+  const lastKey = period.endKey < todayKey ? period.endKey : todayKey;
+
+  let total = 0;
+  // Garde-fou : une plage personnalisée absurde ne doit pas boucler sans fin.
+  for (
+    let day = period.startKey, guard = 0;
+    day <= lastKey && guard < 400;
+    day = addDays(day, 1), guard++
+  ) {
+    const cap = day === todayKey ? nowMinutes : MINUTES_PER_DAY;
+    for (const interval of dayOpenings(day, rules, exceptions).open) {
+      const end = Math.min(interval.end, cap);
+      if (end > interval.start) total += end - interval.start;
+    }
+  }
+
+  return total;
 }
 
 export const JOURNAL_STATUS_LABELS: Record<string, string> = {
@@ -333,6 +465,7 @@ export function activityCsv(journal: JournalRow[], timezone: string): string {
     "Statut",
     "Montant (€)",
     "Compté au CA",
+    "Payé",
   ];
 
   const lines = journal.map((row) =>
@@ -354,6 +487,8 @@ export function activityCsv(journal: JournalRow[], timezone: string): string {
       JOURNAL_STATUS_LABELS[row.status] ?? row.status,
       (row.cents / 100).toFixed(2).replace(".", ","),
       row.counted ? "oui" : "non",
+      // Le règlement ne concerne que les cours donnés ; ailleurs la case est vide.
+      row.counted ? (row.paid ? "oui" : "non") : "",
     ]
       .map(csvCell)
       .join(";")
