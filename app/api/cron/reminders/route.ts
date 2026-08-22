@@ -4,9 +4,11 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { runReminders } from "@/lib/reminders/run";
+import { runSubscriptionReminders } from "@/lib/subscription-reminders/run";
 
 /**
- * Déclencheur des rappels avant cours.
+ * Déclencheur des rappels planifiés : avant cours (H24) et expiration d'accès
+ * prof (J-5 / J-1). Un seul point d'entrée, donc une seule tâche à planifier.
  *
  * Un point d'entrée HTTP plutôt qu'un ordonnanceur intégré : rien dans une
  * application Next ne survit entre deux requêtes, et un `setInterval` dans un
@@ -62,15 +64,22 @@ async function handle() {
   }
 
   try {
-    const run = await runReminders();
+    // Les deux passages sont indépendants et idempotents ; on les enchaîne.
+    const lessons = await runReminders();
+    const subscriptions = await runSubscriptionReminders();
 
-    if (run.candidates > 0) {
+    if (lessons.candidates > 0) {
       console.info(
-        `[CRON] rappels — ${run.sent} envoyé(s), ${run.failed} à réessayer, ${run.skipped} déjà pris`
+        `[CRON] cours — ${lessons.sent} envoyé(s), ${lessons.failed} à réessayer, ${lessons.skipped} déjà pris`
+      );
+    }
+    if (subscriptions.candidates > 0) {
+      console.info(
+        `[CRON] abonnements — ${subscriptions.sent} envoyé(s), ${subscriptions.failed} à réessayer, ${subscriptions.skipped} déjà pris`
       );
     }
 
-    return NextResponse.json(run);
+    return NextResponse.json({ lessons, subscriptions });
   } catch (error) {
     console.error("[CRON_REMINDERS_ERROR]", error);
     // 500 assumé : un ordonnanceur qui retente est exactement ce qu'on veut,

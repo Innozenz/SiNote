@@ -247,15 +247,16 @@ model TeacherProfile {
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
 
-  instruments    TeacherInstrument[]
-  rules          AvailabilityRule[]
-  exceptions     AvailabilityException[]
-  bookings       Booking[]
-  reviews        Review[]
-  reports        ReviewReport[]
-  studentNotes   TeacherStudentNote[]
-  messages       Message[]
-  messageThreads MessageThreadState[]
+  instruments           TeacherInstrument[]
+  rules                 AvailabilityRule[]
+  exceptions            AvailabilityException[]
+  bookings              Booking[]
+  reviews               Review[]
+  reports               ReviewReport[]
+  studentNotes          TeacherStudentNote[]
+  messages              Message[]
+  messageThreads        MessageThreadState[]
+  subscriptionReminders SubscriptionReminder[]
 
   // Dernière consultation des comptes rendus : repère du signal in-app (pastille
   // sur « Comptes rendus »). Un commentaire d'élève postérieur est « non lu ».
@@ -738,4 +739,28 @@ model BookingReminder {
   // le même rappel.
   @@unique([bookingId, kind])
   @@map("booking_reminder")
+}
+
+enum SubscriptionReminderKind {
+  EXPIRY_J5 // 5 jours avant la fin d'accès
+  EXPIRY_J1 // 1 jour avant
+}
+
+// Rappel d'expiration de l'accès plateforme d'un prof. Même dispositif que
+// BookingReminder : insérer la ligne *est* la réservation, et l'unicité arbitre
+// la course entre deux passages du cron.
+model SubscriptionReminder {
+  id        String         @id @default(cuid())
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  kind SubscriptionReminderKind
+  // Fin d'accès visée par ce rappel. Incluse dans la clé : un nouveau cycle
+  // (date d'expiration différente) redéclenche les rappels, sans quoi un prof
+  // qui prolonge ne serait plus jamais prévenu.
+  periodEnd DateTime
+  sentAt    DateTime @default(now())
+
+  @@unique([teacherId, kind, periodEnd])
+  @@map("subscription_reminder")
 }
