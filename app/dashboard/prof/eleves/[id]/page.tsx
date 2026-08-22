@@ -265,6 +265,7 @@ export default async function StudentFilePage({
       (!crFrom || day >= crFrom) &&
       (!crTo || day <= crTo) &&
       (!crNeedle ||
+        (b.report?.title ?? "").toLowerCase().includes(crNeedle) ||
         reportPlainText(b.report?.content ?? "").toLowerCase().includes(crNeedle) ||
         b.instrument.name.toLowerCase().includes(crNeedle))
     );
@@ -390,7 +391,7 @@ export default async function StudentFilePage({
             <div className="flex flex-col gap-4">
             <ListFilters
               searchKey="cr_q"
-              searchPlaceholder="Rechercher dans les comptes rendus…"
+              searchPlaceholder="Rechercher par titre ou contenu…"
               chips={
                 reportInstruments.length >= 2
                   ? [

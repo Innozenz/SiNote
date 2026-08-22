@@ -139,6 +139,7 @@ export default async function TeacherReportsPage({
       (!needle ||
         (b.student.user.name ?? "").toLowerCase().includes(needle) ||
         b.instrument.name.toLowerCase().includes(needle) ||
+        (b.report?.title ?? "").toLowerCase().includes(needle) ||
         reportPlainText(b.report?.content ?? "").toLowerCase().includes(needle))
     );
   });
@@ -175,7 +176,7 @@ export default async function TeacherReportsPage({
         <div className="flex flex-col gap-4">
           <ListFilters
             searchKey="q"
-            searchPlaceholder="Rechercher par élève, instrument ou contenu…"
+            searchPlaceholder="Rechercher par élève, instrument, titre ou contenu…"
             chips={chips.length > 0 ? chips : undefined}
             dateRange={{ fromKey: "from", toKey: "to" }}
           />
