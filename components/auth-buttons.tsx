@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authFailure } from "@/lib/auth-errors";
 import { type Failure } from "@/lib/http/failure";
-import { LogOut, Loader2 } from "lucide-react";
+import { LogOut, Loader2, Mail } from "lucide-react";
 
 const authSchema = z.object({
   email: z.string().email("Adresse email invalide"),
@@ -39,6 +39,11 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<Failure | null>(null);
+  // Adresse en attente de confirmation : bascule l'écran vers « vérifiez votre
+  // boîte mail » (après inscription, ou connexion d'un compte non vérifié).
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   if (session.isPending) {
     return (
@@ -108,27 +113,39 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
     const onError = (ctx: { error: { status?: number; code?: string } }) =>
       setFailure(authFailure({ error: ctx.error }));
 
-    // Navigation franche vers l'espace connecté, pas `router.refresh()`.
-    // `refresh()` comptait sur la redirection *serveur* de /connexion (qui lit
-    // le rôle pour choisir la destination) ; mais rafraîchir la route courante
-    // puis la voir renvoyer un `redirect()` fait boucler le router client en
-    // production (« Trop d'appels aux API History », navigation qui ne se fait
-    // pas). Un `window.location` recharge la page : /dashboard lit la session
-    // fraîche et route selon le rôle (élève/prof, ou /onboarding si nul).
-    const onSuccess = () => {
-      window.location.href = destination;
-    };
-
     try {
       if (isSignUp) {
+        // Vérification d'e-mail obligatoire : l'inscription ne connecte pas
+        // encore. En cas de succès, on bascule sur l'écran « vérifiez votre
+        // boîte mail » — un lien vient de partir (sendOnSignUp).
         await authClient.signUp.email(
           { email, password, name: email.split("@")[0] },
-          { onSuccess, onError }
+          {
+            onSuccess: () => setVerificationEmail(email),
+            onError,
+          }
         );
       } else {
         await authClient.signIn.email(
           { email, password },
-          { onSuccess, onError }
+          {
+            // Navigation franche vers l'espace connecté, pas `router.refresh()` :
+            // rafraîchir /connexion puis la voir renvoyer un `redirect()` fait
+            // boucler le router client en production. `window.location` recharge,
+            // et /dashboard route selon le rôle (ou /onboarding si nul).
+            onSuccess: () => {
+              window.location.href = destination;
+            },
+            onError: (ctx) => {
+              // Compte non confirmé : Better Auth vient de renvoyer un lien. On
+              // montre l'écran de vérification plutôt qu'une erreur sèche.
+              if (ctx.error?.code === "EMAIL_NOT_VERIFIED") {
+                setVerificationEmail(email);
+                return;
+              }
+              onError(ctx);
+            },
+          }
         );
       }
     } catch (caught) {
@@ -140,6 +157,66 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
       setIsLoading(false);
     }
   };
+
+  const resendVerification = async () => {
+    if (!verificationEmail) return;
+    setResending(true);
+    setResent(false);
+    try {
+      await authClient.sendVerificationEmail({
+        email: verificationEmail,
+        callbackURL: "/dashboard",
+      });
+      setResent(true);
+    } catch {
+      // Renvoi impossible (réseau) : l'utilisateur peut réessayer.
+    } finally {
+      setResending(false);
+    }
+  };
+
+  if (verificationEmail) {
+    return (
+      <div className="flex flex-col items-center gap-4 text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+          <Mail className="h-6 w-6" />
+        </span>
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">Vérifiez votre boîte mail</p>
+          <p className="text-sm text-muted">
+            Nous avons envoyé un lien de confirmation à{" "}
+            <span className="font-medium text-foreground">{verificationEmail}</span>.
+            Ouvrez-le pour activer votre compte.
+          </p>
+        </div>
+
+        {resent ? (
+          <p className="text-sm text-success">Lien renvoyé.</p>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resendVerification}
+            disabled={resending}
+          >
+            {resending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Renvoyer le lien
+          </Button>
+        )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setVerificationEmail(null);
+            setResent(false);
+          }}
+        >
+          Retour
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">

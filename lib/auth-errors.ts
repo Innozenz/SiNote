@@ -32,6 +32,8 @@ const MESSAGES: Record<string, string> = {
   INVALID_TOKEN:
     "Ce lien n'est plus valable. Les liens expirent au bout d'une heure et ne servent qu'une fois.",
   INVALID_EMAIL: "Cette adresse e-mail n'est pas valide.",
+  EMAIL_NOT_VERIFIED:
+    "Confirmez d'abord votre adresse e-mail : un lien vient de vous être renvoyé.",
 };
 
 type AuthError = { status?: number; code?: string; message?: string };

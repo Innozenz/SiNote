@@ -1,12 +1,18 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 
-import { buildResetPasswordEmail } from "./notifications/account";
+import {
+  buildResetPasswordEmail,
+  buildVerificationEmail,
+} from "./notifications/account";
 import { sendNotification } from "./notifications/send";
 import prisma from "./prisma";
 
 /** Validité du lien de réinitialisation. */
 const RESET_TOKEN_MINUTES = 60;
+
+/** Validité du lien de confirmation d'e-mail — plus long, c'est de l'onboarding. */
+const VERIFY_TOKEN_MINUTES = 60 * 24;
 
 /**
  * Origines de confiance.
@@ -53,6 +59,16 @@ export const auth = betterAuth({
     emailAndPassword: {
         enabled: true,
         /**
+         * Connexion bloquée tant que l'adresse n'est pas confirmée. À la
+         * tentative de connexion d'un compte non vérifié, Better Auth renvoie
+         * `EMAIL_NOT_VERIFIED` (403) et renvoie un lien — l'UI l'annonce.
+         *
+         * Note : les comptes créés avant l'activation de la vérification ont
+         * `emailVerified = false` et devront donc confirmer (via le lien
+         * renvoyé) à leur prochaine connexion.
+         */
+        requireEmailVerification: true,
+        /**
          * Envoi du lien de réinitialisation.
          *
          * Attendu, contrairement aux notifications de réservation : ici l'envoi
@@ -83,6 +99,49 @@ export const auth = betterAuth({
          * connecté le reste malgré le changement.
          */
         revokeSessionsOnPasswordReset: true,
+    },
+    emailVerification: {
+        // Un lien de confirmation part automatiquement à l'inscription, et
+        // l'utilisateur est connecté dès qu'il l'ouvre — pas de seconde saisie
+        // du mot de passe juste après avoir confirmé.
+        sendOnSignUp: true,
+        // Renvoi automatique du lien quand un compte non confirmé tente de se
+        // connecter : sans ça, Better Auth se contente de refuser (403) sans
+        // rien renvoyer, et l'écran « un lien vient d'être renvoyé » mentirait.
+        sendOnSignIn: true,
+        autoSignInAfterVerification: true,
+        expiresIn: VERIFY_TOKEN_MINUTES * 60,
+        /**
+         * Envoi du lien de confirmation. `url` vient de Better Auth et porte le
+         * jeton ; on n'en change que le `callbackURL` pour atterrir sur
+         * /dashboard (qui route selon le rôle — donc /onboarding pour un compte
+         * neuf) plutôt que sur la racine. Awaité comme le reset : ici l'e-mail
+         * *est* la fonctionnalité, un utilisateur qui ne le reçoit pas reste
+         * bloqué sans le savoir.
+         */
+        sendVerificationEmail: async ({ user, url }) => {
+            let target = url;
+            try {
+                const parsed = new URL(url);
+                parsed.searchParams.set("callbackURL", "/dashboard");
+                target = parsed.toString();
+            } catch {
+                // URL inattendue : on garde celle de Better Auth telle quelle.
+            }
+
+            const result = await sendNotification(
+                buildVerificationEmail({
+                    email: user.email,
+                    name: user.name ?? null,
+                    url: target,
+                    expiresInMinutes: VERIFY_TOKEN_MINUTES,
+                })
+            );
+
+            if (!result.ok) {
+                console.error("[VERIFY_EMAIL] envoi impossible :", result.error);
+            }
+        },
     },
     /**
      * Limitation par IP des routes d'authentification. Sans elle, la

@@ -15,6 +15,39 @@ export type ResetPasswordContext = {
   expiresInMinutes: number;
 };
 
+export type VerificationContext = {
+  email: string;
+  name: string | null;
+  /** Lien fabriqué par Better Auth, déjà porteur du jeton. */
+  url: string;
+  /** Durée de validité, pour la dire à l'utilisateur. */
+  expiresInMinutes: number;
+};
+
+export function buildVerificationEmail(
+  context: VerificationContext
+): Notification {
+  const greeting = context.name?.trim()
+    ? `Bonjour ${context.name.trim().split(" ")[0]},`
+    : "Bonjour,";
+
+  return {
+    to: context.email,
+    subject: "Confirmez votre adresse e-mail SiNote",
+    text: [
+      greeting,
+      ``,
+      `Bienvenue sur SiNote ! Pour activer votre compte, confirmez votre adresse en ouvrant ce lien :`,
+      context.url,
+      ``,
+      `Ce lien est valable ${formatDuration(context.expiresInMinutes)}.`,
+      ``,
+      // Un e-mail non sollicité n'appelle aucune action.
+      `Si vous n'êtes pas à l'origine de cette inscription, ignorez ce message.`,
+    ].join("\n"),
+  };
+}
+
 export function buildResetPasswordEmail(
   context: ResetPasswordContext
 ): Notification {
