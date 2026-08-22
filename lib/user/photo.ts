@@ -1,5 +1,3 @@
-import sharp from "sharp";
-
 import { AVATAR_SIZE } from "./photo-constants";
 
 /**
@@ -24,6 +22,9 @@ import { AVATAR_SIZE } from "./photo-constants";
  * Lève si l'entrée n'est pas une image lisible — l'appelant traduit en 400.
  */
 export async function processAvatar(input: Buffer): Promise<Buffer> {
+  // Import paresseux : sharp (module natif) n'est chargé qu'au traitement d'une
+  // photo, jamais à l'import du module.
+  const sharp = (await import("sharp")).default;
   return sharp(input)
     .rotate()
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: "cover", position: "attention" })

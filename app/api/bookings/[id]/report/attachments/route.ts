@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
-import sharp from "sharp";
 
 import { resolveParticipant } from "@/lib/bookings/participant";
 import prisma from "@/lib/prisma";
@@ -97,6 +96,9 @@ export async function POST(
 
     if (type.kind === "IMAGE") {
       try {
+        // Import paresseux (cf. lib/messages/create.ts) : sharp n'est chargé
+        // que pour une vraie image, jamais au chargement du module.
+        const sharp = (await import("sharp")).default;
         body = await sharp(raw)
           .rotate()
           .resize(2000, 2000, { fit: "inside", withoutEnlargement: true })

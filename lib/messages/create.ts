@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import sharp from "sharp";
-
 import prisma from "@/lib/prisma";
 import { resolveAttachmentType } from "@/lib/reports/attachments";
 import { messageAttachmentKey } from "@/lib/storage/keys";
@@ -88,6 +86,10 @@ export async function createThreadMessage(input: {
 
     if (type.kind === "IMAGE") {
       try {
+        // Import paresseux : un module natif chargé en tête de fichier ferait
+        // planter *tout* l'envoi (même un message texte) si sa lib système
+        // manque. Ici, sharp n'est requis que pour une vraie image.
+        const sharp = (await import("sharp")).default;
         body = await sharp(raw)
           .rotate()
           .resize(2000, 2000, { fit: "inside", withoutEnlargement: true })
