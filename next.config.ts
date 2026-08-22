@@ -10,6 +10,16 @@ const nextConfig: NextConfig = {
   // module … libvips-cpp.so »), cassant jusqu'à l'envoi d'un message texte.
   // On le garde donc externe : il est requis depuis node_modules à l'exécution.
   serverExternalPackages: ["sharp"],
+
+  // Ceinture-bretelles pour l'empaquetage serverless (Vercel/Lambda) : on force
+  // l'inclusion du binaire natif de sharp et de sa lib `libvips` dans les
+  // fonctions des routes qui traitent des images. Sans ça, seul le JS de sharp
+  // est tracé et le `.so` manque à l'exécution (`libvips-cpp.so: cannot open
+  // shared object file`). Les globs sont relatifs à la racine du projet ; sur
+  // Vercel (build Linux) ils résolvent les paquets `@img/*-linux-x64`.
+  outputFileTracingIncludes: {
+    "/api/**": ["./node_modules/@img/**", "./node_modules/sharp/**"],
+  },
   // Pas de distDir configurable : un répertoire de build alternatif n'est
   // ignoré ni par le scanner de Tailwind ni par eslint, qui se mettent alors à
   // lire les artefacts compilés. Pour lancer un second serveur, arrêter le
