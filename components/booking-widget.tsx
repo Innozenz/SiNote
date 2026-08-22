@@ -125,11 +125,12 @@ export function BookingWidget({
 
     // Sinon, on cherche la première semaine ayant un créneau et on ouvre
     // dessus : l'élève tombe directement sur du disponible plutôt que sur une
-    // semaine courante souvent vide. Une seule requête large (l'horizon de
-    // réservation par défaut ≈ 60 j), puis on retient le plus tôt.
+    // semaine courante souvent vide. Une seule requête large, puis on retient
+    // le plus tôt. La plage est plafonnée à 62 jours côté route (MAX_RANGE_DAYS)
+    // — la dépasser renvoie 400 et le saut n'aurait pas lieu.
     (async () => {
       const from = startOfWeek(new Date());
-      const to = new Date(from.getTime() + 9 * 7 * DAY_MS);
+      const to = new Date(from.getTime() + 62 * DAY_MS);
       const result = await postJson<{ slots: Slot[] }>(
         `/api/teachers/${teacherSlug}/availability?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
         { method: "GET" }
