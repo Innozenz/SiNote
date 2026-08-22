@@ -11,13 +11,13 @@ import {
   Video,
 } from "lucide-react";
 
-import { SectionTitle } from "@/components/editorial";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ReportViewer, type ReportView } from "@/components/report-view";
 import { postJson } from "@/lib/http/failure";
 import { groupBookings } from "@/lib/bookings/grouping";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 export type StudentBookingRow = {
   id: string;
@@ -48,6 +48,9 @@ type Enriched = Omit<StudentBookingRow, "startsAt" | "endsAt"> & {
   endsAt: Date;
 };
 
+/** Onglet affiché de la liste des réservations. */
+type BookingTab = "pending" | "upcoming" | "toReview" | "past";
+
 const MODE_LABELS: Record<StudentBookingRow["mode"], string> = {
   ONLINE: "Visio",
   TEACHER_PLACE: "Chez le prof",
@@ -72,6 +75,8 @@ export function StudentBookings({
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Onglet affiché ; « À venir » par défaut, l'écran le plus consulté.
+  const [tab, setTab] = useState<BookingTab>("upcoming");
 
   // Figé au montage : sans ça, un cours changerait de section pendant que
   // l'élève est sur la page.
@@ -262,57 +267,92 @@ export function StudentBookings({
     );
   }
 
+  const tabs: { key: BookingTab; label: string; badge?: number }[] = [
+    { key: "pending", label: "En attente", badge: groups.pending.length },
+    { key: "upcoming", label: "À venir" },
+    { key: "toReview", label: "Passés" },
+    { key: "past", label: "Historique" },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
-      {groups.pending.length > 0 ? (
+      {/* Onglets : chaque état sur son propre onglet plutôt qu'empilés. État
+          client local — la page garde ses mises à jour optimistes. L'avis est
+          désormais global au prof et se donne depuis « Mes cours ». */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1">
+        {tabs.map((t) => {
+          const isActive = t.key === tab;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted hover:text-foreground"
+              )}
+            >
+              {t.label}
+              {t.badge ? (
+                <span className="rounded-full bg-surface-strong px-1.5 text-xs font-semibold text-muted">
+                  {t.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "pending" ? (
         <section className="flex flex-col gap-4">
-          <div>
-            <SectionTitle>En attente de confirmation</SectionTitle>
-            <p className="mt-2 text-sm text-muted">
-              Le prof doit accepter ces demandes. Vous serez fixé dès sa
-              réponse.
-            </p>
-          </div>
+          <p className="text-sm text-muted">
+            Le prof doit accepter ces demandes. Vous serez fixé dès sa réponse.
+          </p>
           <div className="flex flex-col gap-3">
-            {groups.pending.map(renderCard)}
+            {groups.pending.length === 0 ? (
+              <p className="text-sm text-subtle">Aucune demande en attente.</p>
+            ) : (
+              groups.pending.map(renderCard)
+            )}
           </div>
         </section>
       ) : null}
 
-      {/* L'avis est désormais global au prof et se donne depuis « Mes cours »
-          (le dossier du prof), plus par cours ici. */}
-
-      <section className="flex flex-col gap-4">
-        <SectionTitle>Cours à venir</SectionTitle>
-        <div className="flex flex-col gap-3">
+      {tab === "upcoming" ? (
+        <section className="flex flex-col gap-3">
           {groups.upcoming.length === 0 ? (
             <p className="text-sm text-subtle">Aucun cours confirmé à venir.</p>
           ) : (
             groups.upcoming.map(renderCard)
           )}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      {groups.toReview.length > 0 ? (
+      {tab === "toReview" ? (
         <section className="flex flex-col gap-4">
-          <div>
-            <SectionTitle>Cours passés</SectionTitle>
-            <p className="mt-2 text-sm text-muted">
-              En attente de clôture par le prof.
-            </p>
-          </div>
+          <p className="text-sm text-muted">
+            Ces cours sont passés, en attente de clôture par le prof.
+          </p>
           <div className="flex flex-col gap-3">
-            {groups.toReview.map(renderCard)}
+            {groups.toReview.length === 0 ? (
+              <p className="text-sm text-subtle">Aucun cours en attente de clôture.</p>
+            ) : (
+              groups.toReview.map(renderCard)
+            )}
           </div>
         </section>
       ) : null}
 
-      {groups.past.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionTitle>Historique</SectionTitle>
-          <div className="flex flex-col gap-3">
-            {groups.past.slice(0, 20).map(renderCard)}
-          </div>
+      {tab === "past" ? (
+        <section className="flex flex-col gap-3">
+          {groups.past.length === 0 ? (
+            <p className="text-sm text-subtle">Aucun cours passé.</p>
+          ) : (
+            groups.past.slice(0, 20).map(renderCard)
+          )}
         </section>
       ) : null}
     </div>

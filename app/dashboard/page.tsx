@@ -147,13 +147,6 @@ export default async function DashboardPage() {
           highlight: pendingCount > 0,
         },
         {
-          href: "/dashboard/prof/eleves",
-          icon: Users,
-          title: "Mes élèves",
-          text: "Fiches, historique et comptes rendus par élève.",
-          highlight: false,
-        },
-        {
           href: "/dashboard/prof/comptes-rendus",
           icon: FileText,
           title: "Comptes rendus",
@@ -161,10 +154,10 @@ export default async function DashboardPage() {
           highlight: false,
         },
         {
-          href: "/dashboard/prof",
-          icon: UserCog,
-          title: "Ma fiche",
-          text: "Présentation, instruments, tarif et règles de réservation.",
+          href: "/dashboard/prof/eleves",
+          icon: Users,
+          title: "Mes élèves",
+          text: "Fiches, historique et comptes rendus par élève.",
           highlight: false,
         },
         {
@@ -172,6 +165,13 @@ export default async function DashboardPage() {
           icon: CalendarDays,
           title: "Mes disponibilités",
           text: "La semaine type et les exceptions ponctuelles.",
+          highlight: false,
+        },
+        {
+          href: "/dashboard/prof",
+          icon: UserCog,
+          title: "Ma fiche",
+          text: "Présentation, instruments, tarif et règles de réservation.",
           highlight: false,
         },
       ]

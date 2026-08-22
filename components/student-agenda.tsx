@@ -90,6 +90,18 @@ type StudentLesson = Omit<StudentAgendaRow, "startsAt" | "endsAt"> & {
 
 const HOUR_HEIGHT = 56;
 
+/**
+ * Plage horaire affichée par défaut (8h → 21h).
+ *
+ * Sans disponibilités, `buildWeekAgenda` cale ses bornes sur les seuls cours :
+ * une semaine avec un cours de 14h à 15h donnerait une grille d'une heure de
+ * haut. On impose donc une amplitude de journée, élargie seulement si un cours
+ * tombe en dehors — la grille reste lisible et ne « saute » pas d'une semaine à
+ * l'autre.
+ */
+const DISPLAY_START = 8 * 60;
+const DISPLAY_END = 21 * 60;
+
 const HOUR_LINES = [
   `repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${HOUR_HEIGHT}px)`,
   `repeating-linear-gradient(to bottom, color-mix(in oklab, var(--border) 45%, transparent) 0, color-mix(in oklab, var(--border) 45%, transparent) 1px, transparent 1px, transparent ${HOUR_HEIGHT / 2}px)`,
@@ -180,17 +192,18 @@ export function StudentAgenda({
       ? dayTitle(agenda.days[0]?.date ?? weekStart)
       : weekLabel(agenda.days);
 
-  const span = agenda.endMinute - agenda.startMinute;
+  // Bornes d'affichage : au moins la journée standard, élargie si un cours
+  // déborde (tôt le matin ou tard le soir).
+  const startMinute = Math.min(agenda.startMinute, DISPLAY_START);
+  const endMinute = Math.max(agenda.endMinute, DISPLAY_END);
+  const span = endMinute - startMinute;
   const height = (span / 60) * HOUR_HEIGHT;
-  const offset = (minute: number) =>
-    ((minute - agenda.startMinute) / span) * 100;
+  const offset = (minute: number) => ((minute - startMinute) / span) * 100;
 
   const todayIndex = agenda.days.findIndex((day) => day.isToday);
   const nowMinute = localMinutesInZone(now, timezone);
   const showNow =
-    todayIndex >= 0 &&
-    nowMinute >= agenda.startMinute &&
-    nowMinute <= agenda.endMinute;
+    todayIndex >= 0 && nowMinute >= startMinute && nowMinute <= endMinute;
 
   const selected = rows.find((row) => row.id === selectedId) ?? null;
 
@@ -283,7 +296,7 @@ export function StudentAgenda({
 
               <div className="flex" style={{ height }}>
                 <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated">
-                  {hourMarks(agenda.startMinute, agenda.endMinute).map(
+                  {hourMarks(startMinute, endMinute).map(
                     (minute) => (
                       <span
                         key={minute}
