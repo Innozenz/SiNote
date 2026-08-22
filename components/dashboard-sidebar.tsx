@@ -7,6 +7,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   CalendarClock,
   CalendarDays,
+  ClipboardList,
   CreditCard,
   FileText,
   FolderOpen,
@@ -66,8 +67,9 @@ const TEACHER_ITEMS: Item[] = [
 
 const STUDENT_ITEMS: Item[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord", exact: true },
-  { href: "/dashboard/cours", icon: CalendarClock, label: "Mes cours", exact: true },
-  { href: "/dashboard/dossiers", icon: FolderOpen, label: "Mes dossiers" },
+  { href: "/dashboard/agenda", icon: CalendarClock, label: "Mon agenda" },
+  { href: "/dashboard/cours", icon: ClipboardList, label: "Mes réservations", exact: true },
+  { href: "/dashboard/dossiers", icon: FolderOpen, label: "Mes cours" },
   { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" },
   { href: "/dashboard/cours/profil", icon: UserCog, label: "Mon profil" },
 ];

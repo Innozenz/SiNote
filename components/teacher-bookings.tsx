@@ -14,7 +14,6 @@ import {
   X,
 } from "lucide-react";
 
-import { SectionTitle } from "@/components/editorial";
 import {
   LEVEL_LABELS,
   StudentProfileBody,
@@ -69,6 +68,9 @@ export type BookingRow = {
 
 type Action = "confirm" | "decline" | "cancel" | "complete" | "no_show";
 
+/** Onglet actif de la boîte de réception. */
+type BookingTab = "pending" | "upcoming" | "toReview" | "past";
+
 // Confirmation affichée en toast selon l'action réussie.
 const ACTION_SUCCESS: Record<Action, string> = {
   confirm: "Cours confirmé.",
@@ -108,6 +110,8 @@ export function TeacherBookings({
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Onglet affiché ; « en attente » par défaut, c'est là que se trouve l'action.
+  const [tab, setTab] = useState<BookingTab>("pending");
   // Demande dont la modale « profil de l'élève » est ouverte.
   const [profileRow, setProfileRow] = useState<Enriched | null>(null);
 
@@ -256,46 +260,73 @@ export function TeacherBookings({
     );
   };
 
+  const tabs: { key: BookingTab; label: string; badge?: number }[] = [
+    { key: "pending", label: "En attente", badge: groups.pending.length },
+    { key: "upcoming", label: "À venir" },
+    { key: "toReview", label: "À clôturer", badge: groups.toReview.length },
+    { key: "past", label: "Historique" },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-4">
-        <div>
-          <SectionTitle
-            trailing={
-              groups.pending.length > 0 ? (
-                <Badge variant="secondary">{groups.pending.length}</Badge>
-              ) : null
-            }
-          >
-            Demandes en attente
-          </SectionTitle>
-          <p className="mt-2 text-sm text-muted">
+      {/* Onglets : chaque section (en attente, à venir, à clôturer, historique)
+          sur son propre onglet plutôt qu'empilées. État client local — la boîte
+          garde ses mises à jour optimistes, inutile de passer par l'URL. */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1">
+        {tabs.map((t) => {
+          const isActive = t.key === tab;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                isActive
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted hover:text-foreground"
+              )}
+            >
+              {t.label}
+              {t.badge ? (
+                <span className="rounded-full bg-surface-strong px-1.5 text-xs font-semibold text-muted">
+                  {t.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "pending" ? (
+        <section className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
             Chaque demande bloque son créneau tant que vous n&apos;avez pas
             répondu : personne d&apos;autre ne peut le réserver.
           </p>
-        </div>
-        <div className="flex flex-col gap-3">
-          {groups.pending.length === 0 ? (
-            <p className="text-sm text-subtle">Aucune demande en attente.</p>
-          ) : (
-            groups.pending.map((booking) =>
-              renderCard(booking, [
-                { action: "confirm", label: "Confirmer", icon: Check },
-                {
-                  action: "decline",
-                  label: "Refuser",
-                  variant: "outline",
-                  icon: X,
-                },
-              ])
-            )
-          )}
-        </div>
-      </section>
+          <div className="flex flex-col gap-3">
+            {groups.pending.length === 0 ? (
+              <p className="text-sm text-subtle">Aucune demande en attente.</p>
+            ) : (
+              groups.pending.map((booking) =>
+                renderCard(booking, [
+                  { action: "confirm", label: "Confirmer", icon: Check },
+                  {
+                    action: "decline",
+                    label: "Refuser",
+                    variant: "outline",
+                    icon: X,
+                  },
+                ])
+              )
+            )}
+          </div>
+        </section>
+      ) : null}
 
-      <section className="flex flex-col gap-4">
-        <SectionTitle>Cours à venir</SectionTitle>
-        <div className="flex flex-col gap-3">
+      {tab === "upcoming" ? (
+        <section className="flex flex-col gap-3">
           {groups.upcoming.length === 0 ? (
             <p className="text-sm text-subtle">Aucun cours confirmé à venir.</p>
           ) : (
@@ -310,40 +341,42 @@ export function TeacherBookings({
               ])
             )
           )}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      {groups.toReview.length > 0 ? (
+      {tab === "toReview" ? (
         <section className="flex flex-col gap-4">
-          <div>
-            <SectionTitle>À clôturer</SectionTitle>
-            <p className="mt-2 text-sm text-muted">
-              Ces cours sont passés. Les marquer comme terminés permettra à
-              l&apos;élève de vous laisser un avis.
-            </p>
-          </div>
+          <p className="text-sm text-muted">
+            Ces cours sont passés. Les marquer comme terminés permettra à
+            l&apos;élève de vous laisser un avis.
+          </p>
           <div className="flex flex-col gap-3">
-            {groups.toReview.map((booking) =>
-              renderCard(booking, [
-                { action: "complete", label: "Cours donné", icon: Check },
-                {
-                  action: "no_show",
-                  label: "Élève absent",
-                  variant: "outline",
-                  icon: X,
-                },
-              ])
+            {groups.toReview.length === 0 ? (
+              <p className="text-sm text-subtle">Aucun cours à clôturer.</p>
+            ) : (
+              groups.toReview.map((booking) =>
+                renderCard(booking, [
+                  { action: "complete", label: "Cours donné", icon: Check },
+                  {
+                    action: "no_show",
+                    label: "Élève absent",
+                    variant: "outline",
+                    icon: X,
+                  },
+                ])
+              )
             )}
           </div>
         </section>
       ) : null}
 
-      {groups.past.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionTitle>Historique</SectionTitle>
-          <div className="flex flex-col gap-3">
-            {groups.past.slice(0, 20).map((booking) => renderCard(booking, []))}
-          </div>
+      {tab === "past" ? (
+        <section className="flex flex-col gap-3">
+          {groups.past.length === 0 ? (
+            <p className="text-sm text-subtle">Aucun cours passé.</p>
+          ) : (
+            groups.past.slice(0, 20).map((booking) => renderCard(booking, []))
+          )}
         </section>
       ) : null}
 

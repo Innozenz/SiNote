@@ -177,10 +177,10 @@ export default async function DashboardPage() {
       ]
     : [
         {
-          href: "/dashboard/cours",
+          href: "/dashboard/agenda",
           icon: CalendarDays,
-          title: "Mes cours",
-          text: "Demandes en cours, cours à venir et historique.",
+          title: "Mon agenda",
+          text: "Vos cours de la semaine en un coup d'œil.",
           highlight: false,
         },
         {

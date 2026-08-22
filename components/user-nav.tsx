@@ -111,7 +111,11 @@ export function UserNav({
         ]
       : role === "STUDENT"
       ? [
-          { icon: CalendarDays, label: "Mes cours", href: "/dashboard/cours" },
+          {
+            icon: CalendarDays,
+            label: "Mes réservations",
+            href: "/dashboard/cours",
+          },
           {
             icon: UserCog,
             label: "Mon profil",

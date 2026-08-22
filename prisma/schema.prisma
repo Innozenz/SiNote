@@ -659,6 +659,11 @@ model Review {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Un seul avis par couple prof↔élève : l'avis est global (« l'élève note le
+  // prof »), pas un par cours. `bookingId` reste unique et sert d'ancre vers un
+  // cours réellement suivi — la garantie anti-faux avis — ainsi que d'instrument
+  // et de date crédibles à l'affichage.
+  @@unique([teacherId, studentId])
   @@index([teacherId, publishedAt])
   @@map("review")
 }

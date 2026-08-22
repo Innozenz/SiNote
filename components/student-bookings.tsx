@@ -8,19 +8,15 @@ import {
   MapPin,
   Search,
   Sparkles,
-  Star,
   Video,
 } from "lucide-react";
 
 import { SectionTitle } from "@/components/editorial";
-import { ReviewForm } from "@/components/review-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Stars } from "@/components/ui/stars";
 import { ReportViewer, type ReportView } from "@/components/report-view";
 import { postJson } from "@/lib/http/failure";
 import { groupBookings } from "@/lib/bookings/grouping";
-import { checkReviewable } from "@/lib/reviews/eligibility";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
 
 export type StudentBookingRow = {
@@ -43,13 +39,6 @@ export type StudentBookingRow = {
   instrumentName: string;
   teacherName: string | null;
   teacherSlug: string;
-  /** Avis déjà déposé sur ce cours, s'il y en a un. */
-  review: {
-    rating: number;
-    comment: string | null;
-    /** Faux si la modération l'a retiré : l'élève doit le savoir. */
-    published: boolean;
-  } | null;
   /** Compte rendu rédigé par le prof, s'il existe. */
   report: ReportView | null;
 };
@@ -83,8 +72,6 @@ export function StudentBookings({
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
-  /** Cours dont le formulaire d'avis est ouvert. */
-  const [reviewing, setReviewing] = useState<string | null>(null);
 
   // Figé au montage : sans ça, un cours changerait de section pendant que
   // l'élève est sur la page.
@@ -101,33 +88,6 @@ export function StudentBookings({
         now
       ),
     [rows, now]
-  );
-
-  /**
-   * Cours en attente d'avis, remontés dans leur propre section.
-   *
-   * Ils vivent sinon dans l'historique, tronqué à vingt lignes : la
-   * sollicitation la plus utile — juste après un cours qui s'est bien passé —
-   * y serait invisible. Même règle que côté serveur, via `checkReviewable`.
-   */
-  const awaitingReview = useMemo(
-    () =>
-      groups.past.filter(
-        (row) =>
-          checkReviewable(
-            {
-              status: row.status,
-              endsAt: row.endsAt,
-              // L'appartenance est déjà acquise : ces cours sont ceux de
-              // l'élève connecté. On neutralise ce volet de la règle.
-              studentId: "self",
-              hasReview: row.review !== null,
-            },
-            "self",
-            now
-          ).ok
-      ),
-    [groups.past, now]
   );
 
   const cancel = async (id: string) => {
@@ -251,30 +211,6 @@ export function StudentBookings({
         </p>
       ) : null}
 
-      {/* L'avis déjà déposé reste visible : sans lui, l'élève ne saurait plus
-          ce qu'il a écrit, et le bouton « donner mon avis » aurait disparu
-          sans explication. */}
-      {row.review ? (
-        <div className="rounded-md bg-surface p-3">
-          <div className="flex items-center gap-2">
-            <Stars value={row.review.rating} />
-            <span className="text-sm text-muted">Votre avis</span>
-          </div>
-          {row.review.comment ? (
-            <p className="mt-1 text-sm text-muted">{row.review.comment}</p>
-          ) : null}
-
-          {/* Sans cette mention, l'élève croirait son avis en ligne alors
-              qu'il a été retiré. */}
-          {!row.review.published ? (
-            <p className="mt-2 text-sm text-warning">
-              Cet avis a été retiré par la modération : il n&apos;apparaît pas
-              sur la fiche du prof.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
       {row.report &&
       (row.report.content ||
         row.report.attachments.length > 0 ||
@@ -343,64 +279,8 @@ export function StudentBookings({
         </section>
       ) : null}
 
-      {awaitingReview.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <div>
-            <SectionTitle>Donnez votre avis</SectionTitle>
-            <p className="mt-2 text-sm text-muted">
-              Votre retour aide les prochains élèves à choisir. Il apparaîtra
-              sur la fiche du prof avec votre prénom.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3">
-            {awaitingReview.map((row) => (
-              <div
-                key={row.id}
-                className="flex flex-col gap-3 rounded-lg border border-border p-4"
-              >
-                <div>
-                  <p className="font-medium">
-                    <Link
-                      href={`/profs/${row.teacherSlug}`}
-                      className="hover:underline"
-                    >
-                      {row.teacherName ?? "Prof"}
-                    </Link>
-                    {" — "}
-                    {row.instrumentName}
-                  </p>
-                  <p className="text-sm text-muted">{format(row.startsAt)}</p>
-                </div>
-
-                {reviewing === row.id ? (
-                  <ReviewForm
-                    bookingId={row.id}
-                    onDone={(review) => {
-                      setRows((current) =>
-                        current.map((item) =>
-                          item.id === row.id
-                            ? // Un avis vient d'être déposé : il naît publié.
-                              { ...item, review: { ...review, published: true } }
-                            : item
-                        )
-                      );
-                      setReviewing(null);
-                      notifySuccess("Merci, votre avis est publié.");
-                    }}
-                  />
-                ) : (
-                  <div>
-                    <Button size="sm" onClick={() => setReviewing(row.id)}>
-                      <Star className="mr-2 h-3 w-3" />
-                      Donner mon avis
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {/* L'avis est désormais global au prof et se donne depuis « Mes cours »
+          (le dossier du prof), plus par cours ici. */}
 
       <section className="flex flex-col gap-4">
         <SectionTitle>Cours à venir</SectionTitle>

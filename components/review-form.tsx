@@ -10,12 +10,13 @@ import { postJson, type Failure } from "@/lib/http/failure";
 import { cn } from "@/lib/utils";
 
 /**
- * Dépôt d'un avis sur un cours terminé.
+ * Dépôt (ou modification) de l'avis global d'un élève sur un prof.
  *
- * Le choix de la note est un groupe de boutons radio natifs, pas une rangée de
- * `<div>` cliquables : la notation au clavier et l'annonce par un lecteur
- * d'écran viennent alors gratuitement, et c'est le genre de composant qu'on ne
- * réimplémente jamais correctement à la main.
+ * L'avis est unique par prof : le formulaire sert aussi bien à le créer qu'à le
+ * modifier (`initial` préremplit alors la note et le commentaire). Le choix de
+ * la note est un groupe de boutons radio natifs, pas une rangée de `<div>`
+ * cliquables : la notation au clavier et l'annonce par un lecteur d'écran
+ * viennent gratuitement.
  *
  * Le commentaire est facultatif — exiger un texte ferait surtout baisser le
  * nombre d'avis.
@@ -30,15 +31,21 @@ const LABELS: Record<number, string> = {
 };
 
 export function ReviewForm({
-  bookingId,
+  teacherId,
+  initial,
   onDone,
+  onCancel,
 }: {
-  bookingId: string;
+  teacherId: string;
+  /** Avis existant à modifier ; absent pour un premier dépôt. */
+  initial?: { rating: number; comment: string | null };
   onDone: (review: { rating: number; comment: string | null }) => void;
+  /** Proposé en mode édition, pour renoncer aux changements. */
+  onCancel?: () => void;
 }) {
-  const [rating, setRating] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(initial?.rating ?? null);
   const [hovered, setHovered] = useState<number | null>(null);
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(initial?.comment ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Failure | null>(null);
 
@@ -58,7 +65,7 @@ export function ReviewForm({
         {
           method: "POST",
           body: JSON.stringify({
-            bookingId,
+            teacherId,
             rating,
             comment: comment.trim() || undefined,
           }),
@@ -82,7 +89,7 @@ export function ReviewForm({
       className="flex flex-col gap-3 rounded-md bg-surface p-4"
     >
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">Votre avis sur ce cours</legend>
+        <legend className="text-sm font-medium">Votre avis sur ce prof</legend>
 
         <div
           className="flex items-center gap-1"
@@ -96,7 +103,7 @@ export function ReviewForm({
             >
               <input
                 type="radio"
-                name={`rating-${bookingId}`}
+                name={`rating-${teacherId}`}
                 value={value}
                 checked={rating === value}
                 onChange={() => setRating(value)}
@@ -131,11 +138,22 @@ export function ReviewForm({
         placeholder="Ce qui vous a plu, ce qui pourrait être mieux… (facultatif)"
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" size="sm" disabled={rating === null || busy}>
           {busy ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : null}
-          Publier mon avis
+          {initial ? "Enregistrer" : "Publier mon avis"}
         </Button>
+        {onCancel ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            Annuler
+          </Button>
+        ) : null}
         <p className="text-xs text-subtle">
           Publié sur la fiche du prof, avec votre prénom.
         </p>

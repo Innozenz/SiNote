@@ -86,11 +86,12 @@ export default async function StudentDossiersPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Espace élève" title="Mes dossiers" />
+      <PageHeader eyebrow="Espace élève" title="Mes cours" />
 
       {rows.length === 0 ? (
         <p className="mt-10 text-muted">
-          Un dossier s&apos;ouvre pour chaque prof dès votre premier cours réservé.
+          Vos cours apparaîtront ici, regroupés par prof, dès votre première
+          réservation.
         </p>
       ) : (
         <ul className="mt-10 divide-y divide-border border-y border-border">

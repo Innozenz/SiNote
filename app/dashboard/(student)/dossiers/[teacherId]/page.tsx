@@ -11,6 +11,7 @@ import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { MarkThreadRead } from "@/components/mark-thread-read";
 import { MessageThread } from "@/components/message-thread";
 import { ReportViewer } from "@/components/report-view";
+import { TeacherReview } from "@/components/teacher-review";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { auth } from "@/lib/auth";
@@ -124,6 +125,13 @@ export default async function StudentDossierPage({
           },
         },
       },
+      // Avis global de cet élève sur ce prof (unique par couple), pour l'onglet
+      // « Mon avis » : afficher/modifier l'existant.
+      reviews: {
+        where: { studentId: student.id },
+        take: 1,
+        select: { rating: true, comment: true, publishedAt: true },
+      },
     },
   });
 
@@ -170,10 +178,13 @@ export default async function StudentDossierPage({
     createdAt: m.createdAt.toISOString(),
   }));
 
+  const existingReview = teacher.reviews[0] ?? null;
+
   const tabs = [
     { key: "comptes-rendus", label: "Comptes rendus", badge: reports.length },
     { key: "historique", label: "Historique", badge: teacher.bookings.length },
     { key: "messages", label: "Messages", badge: messages.length },
+    { key: "avis", label: "Mon avis" },
   ];
   const sp = await searchParams;
   const active = tabs.some((t) => t.key === sp.onglet)
@@ -210,7 +221,7 @@ export default async function StudentDossierPage({
           className="flex w-fit items-center gap-1 text-sm text-muted hover:underline"
         >
           <ChevronLeft className="h-3 w-3" />
-          Mes dossiers
+          Mes cours
         </Link>
 
         <div className="flex items-center gap-4 border-b border-border pb-6">
@@ -237,6 +248,22 @@ export default async function StudentDossierPage({
       </div>
 
       <FicheTabs tabs={tabs} active={active} basePath={basePath} />
+
+      {active === "avis" ? (
+        <TeacherReview
+          teacherId={teacher.id}
+          canReview={stats.completed > 0}
+          initial={
+            existingReview
+              ? {
+                  rating: existingReview.rating,
+                  comment: existingReview.comment,
+                  published: existingReview.publishedAt !== null,
+                }
+              : null
+          }
+        />
+      ) : null}
 
       {active === "messages" ? (
         <>

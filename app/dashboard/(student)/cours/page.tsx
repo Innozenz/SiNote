@@ -47,10 +47,6 @@ export default async function StudentBookingsPage() {
       meetingUrl: true,
       address: true,
       cancellationReason: true,
-      // Sert à savoir si l'avis reste à donner : la règle de
-      // lib/reviews/eligibility.ts s'applique ensuite côté client, comme sur
-      // le serveur.
-      review: { select: { rating: true, comment: true, publishedAt: true } },
       report: {
         select: {
           title: true,
@@ -97,13 +93,6 @@ export default async function StudentBookingsPage() {
     instrumentName: booking.instrument.name,
     teacherName: booking.teacher.user.name,
     teacherSlug: booking.teacher.slug,
-    review: booking.review
-      ? {
-          rating: booking.review.rating,
-          comment: booking.review.comment,
-          published: booking.review.publishedAt !== null,
-        }
-      : null,
     report: booking.report
       ? {
           title: booking.report.title,
@@ -122,7 +111,7 @@ export default async function StudentBookingsPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <MarkCoursSeen />
-      <PageHeader eyebrow="Espace élève" title="Mes cours" />
+      <PageHeader eyebrow="Espace élève" title="Mes réservations" />
 
       <div className="mt-10">
         <StudentBookings initial={rows} timezone={user.timezone} />
