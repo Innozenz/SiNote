@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+
+  // `sharp` (traitement d'images : photos de profil, pièces jointes) est un
+  // module natif — il charge une lib système (`libvips`). Empaqueté par le
+  // bundler serveur (Turbopack), son binaire natif ne se retrouve plus à côté
+  // du chunk et le chargement échoue au runtime (« Could not load the sharp
+  // module … libvips-cpp.so »), cassant jusqu'à l'envoi d'un message texte.
+  // On le garde donc externe : il est requis depuis node_modules à l'exécution.
+  serverExternalPackages: ["sharp"],
   // Pas de distDir configurable : un répertoire de build alternatif n'est
   // ignoré ni par le scanner de Tailwind ni par eslint, qui se mettent alors à
   // lire les artefacts compilés. Pour lancer un second serveur, arrêter le
