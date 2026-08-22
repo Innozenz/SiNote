@@ -8,10 +8,48 @@ import prisma from "./prisma";
 /** Validité du lien de réinitialisation. */
 const RESET_TOKEN_MINUTES = 60;
 
+/**
+ * Origines de confiance.
+ *
+ * Better Auth rejette (403 `INVALID_ORIGIN`) toute requête dont l'origine n'est
+ * pas listée ; par défaut la liste ne contient que `baseURL` (BETTER_AUTH_URL).
+ * Or le site répond à la fois sur l'apex (`sinote.fr`) et sur `www.sinote.fr`
+ * selon la façon dont le domaine résout : si l'un manque, la connexion échoue
+ * depuis cette origine. On liste donc les deux variantes de chaque URL connue.
+ *
+ * Le vrai remède côté prod reste de choisir UNE origine canonique et de
+ * rediriger l'autre en 301 (config d'hébergement/DNS) — ceci garantit surtout
+ * que l'authentification marche quelle que soit celle qu'ouvre le visiteur.
+ */
+function withWwwVariant(url: string): string[] {
+    try {
+        const parsed = new URL(url);
+        const bare = parsed.hostname.replace(/^www\./, "");
+        return [
+            `${parsed.protocol}//${bare}`,
+            `${parsed.protocol}//www.${bare}`,
+        ];
+    } catch {
+        return [];
+    }
+}
+
+const trustedOrigins = [
+    ...new Set(
+        [process.env.BETTER_AUTH_URL, process.env.NEXT_PUBLIC_APP_URL]
+            .filter((value): value is string => Boolean(value))
+            .flatMap(withWwwVariant)
+    ),
+];
+
 export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: "postgresql",
     }),
+    // En dev, les deux variables valent localhost : la liste contient donc
+    // localhost (+ sa variante www, inoffensive). Si aucune n'est définie, on
+    // laisse Better Auth sur son défaut plutôt que d'imposer une liste vide.
+    ...(trustedOrigins.length > 0 ? { trustedOrigins } : {}),
     emailAndPassword: {
         enabled: true,
         /**
