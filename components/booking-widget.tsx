@@ -82,39 +82,70 @@ export function BookingWidget({
   const [error, setError] = useState<Failure | null>(null);
   const [slotsFailed, setSlotsFailed] = useState(false);
   const [done, setDone] = useState(false);
+  // La semaine initiale n'est fixée qu'après avoir cherché le premier créneau
+  // disponible (ou restauré une sélection). Tant que non, on n'affiche que le
+  // squelette — inutile de charger la semaine courante pour la remplacer aussitôt.
+  const [ready, setReady] = useState(false);
 
   // Sélection conservée à travers l'aller-retour de connexion / onboarding : un
   // invité qui choisit un créneau puis part se connecter le retrouve à son
   // retour, prêt à confirmer. Écrite au moment de partir (clic sur l'appel à
   // l'action), relue une fois au montage.
   const storageKey = `sinote:booking:${teacherSlug}`;
-  const restoredRef = useRef(false);
+  const bootstrappedRef = useRef(false);
 
   useEffect(() => {
-    if (restoredRef.current) return;
-    restoredRef.current = true;
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
 
+    // Sélection sauvegardée (retour de connexion / onboarding) : on la restaure
+    // telle quelle, semaine comprise, et on affiche.
     const raw = sessionStorage.getItem(storageKey);
-    if (!raw) return;
-    sessionStorage.removeItem(storageKey);
-
-    try {
-      const saved = JSON.parse(raw) as {
-        selected?: string;
-        instrument?: string;
-        isTrial?: boolean;
-        message?: string;
-        weekStart?: string;
-      };
-      if (saved.weekStart) setWeekStart(new Date(saved.weekStart));
-      if (saved.selected) setSelected(saved.selected);
-      if (saved.instrument) setInstrument(saved.instrument);
-      if (typeof saved.isTrial === "boolean") setIsTrial(saved.isTrial);
-      if (saved.message) setMessage(saved.message);
-    } catch {
-      // Entrée illisible : on l'ignore, la sélection repart de zéro.
+    if (raw) {
+      sessionStorage.removeItem(storageKey);
+      try {
+        const saved = JSON.parse(raw) as {
+          selected?: string;
+          instrument?: string;
+          isTrial?: boolean;
+          message?: string;
+          weekStart?: string;
+        };
+        if (saved.weekStart) setWeekStart(new Date(saved.weekStart));
+        if (saved.selected) setSelected(saved.selected);
+        if (saved.instrument) setInstrument(saved.instrument);
+        if (typeof saved.isTrial === "boolean") setIsTrial(saved.isTrial);
+        if (saved.message) setMessage(saved.message);
+      } catch {
+        // Entrée illisible : on l'ignore, la sélection repart de zéro.
+      }
+      setReady(true);
+      return;
     }
-  }, [storageKey]);
+
+    // Sinon, on cherche la première semaine ayant un créneau et on ouvre
+    // dessus : l'élève tombe directement sur du disponible plutôt que sur une
+    // semaine courante souvent vide. Une seule requête large (l'horizon de
+    // réservation par défaut ≈ 60 j), puis on retient le plus tôt.
+    (async () => {
+      const from = startOfWeek(new Date());
+      const to = new Date(from.getTime() + 9 * 7 * DAY_MS);
+      const result = await postJson<{ slots: Slot[] }>(
+        `/api/teachers/${teacherSlug}/availability?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
+        { method: "GET" }
+      );
+
+      if (result.ok && result.data.slots.length > 0) {
+        const earliest = result.data.slots.reduce((a, b) =>
+          a.startsAt <= b.startsAt ? a : b
+        );
+        setWeekStart(startOfWeek(new Date(earliest.startsAt)));
+      }
+      // Créneaux introuvables ou requête en échec : on reste sur la semaine
+      // courante, l'affichage hebdo gère ensuite le vide / la relance.
+      setReady(true);
+    })();
+  }, [storageKey, teacherSlug]);
 
   const persistSelection = () => {
     if (!selected) return;
@@ -156,8 +187,11 @@ export function BookingWidget({
   }, [teacherSlug, weekStart]);
 
   useEffect(() => {
-    loadSlots();
-  }, [loadSlots]);
+    // On attend que la semaine initiale soit fixée (recherche du premier
+    // créneau disponible ou restauration), pour ne pas charger la semaine
+    // courante puis la remplacer.
+    if (ready) loadSlots();
+  }, [loadSlots, ready]);
 
   const book = async () => {
     if (!selected) return;
