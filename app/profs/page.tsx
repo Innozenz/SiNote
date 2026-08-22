@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Globe, MapPin } from "lucide-react";
 import { Suspense } from "react";
 
-import { PageHeader, Row, RowList } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import { SearchFilters } from "@/components/search-filters";
 import { SiteHeader } from "@/components/site-header";
+import { TeacherResultList } from "@/components/teacher-result-list";
 import { Button } from "@/components/ui/button";
-import { RatingBadge } from "@/components/ui/stars";
 import {
   buildQueryString,
   hasActiveFilters,
@@ -16,7 +15,16 @@ import {
   SEARCH_PAGE_SIZE,
   type RawParams,
 } from "@/lib/search/query";
-import { getSearchableInstruments, searchTeachers } from "@/lib/search/teachers";
+import {
+  getSearchableInstruments,
+  resolveInstrument,
+  searchTeachers,
+} from "@/lib/search/teachers";
+import {
+  citySlug,
+  instrumentCityPath,
+  instrumentPath,
+} from "@/lib/seo/landing";
 
 /**
  * Recherche de profs.
@@ -40,14 +48,35 @@ export async function generateMetadata({
   const place = filters.city ? ` à ${filters.city}` : "";
   const title = `Cours ${subject}${place} — trouvez votre prof`;
 
+  // Consolidation SEO : une recherche par instrument (« cours de guitare »)
+  // vise exactement ce que couvrent les pages `/cours/*`, plus riches. Pour ne
+  // pas se cannibaliser, le canonical d'une telle recherche pointe vers la page
+  // de cours correspondante — l'instrument résolu en slug, la ville sluggée.
+  // Une recherche par ville seule (sans page /cours équivalente) reste
+  // canonique sur elle-même.
+  const matched = filters.instrument
+    ? await resolveInstrument(filters.instrument)
+    : null;
+
+  let canonical = `/profs${buildQueryString(filters)}`;
+  if (matched && isIndexableSearch(filters)) {
+    canonical = filters.city
+      ? instrumentCityPath(matched.slug, citySlug(filters.city))
+      : instrumentPath(matched.slug);
+  }
+
+  // Un terme d'instrument non reconnu ne ramène rien : on ne l'indexe pas.
+  const indexable =
+    isIndexableSearch(filters) && !(filters.instrument !== null && !matched);
+
   return {
     title,
     description: `Parcourez les profs ${subject}${place} sur SiNote et réservez votre premier cours.`,
-    alternates: { canonical: `/profs${buildQueryString(filters)}` },
+    alternates: { canonical },
     // Instrument et ville sont indexés — ce sont les requêtes qui amènent des
     // élèves. Prix, modalité, essai et pagination ne le sont pas : ils
     // multiplient des pages quasi identiques.
-    robots: isIndexableSearch(filters) ? undefined : { index: false },
+    robots: indexable ? undefined : { index: false },
   };
 }
 
@@ -159,80 +188,7 @@ export default async function SearchPage({
           )}
         </div>
       ) : (
-        <RowList className="mt-10">
-          {results.map((teacher) => (
-            <Row
-              key={teacher.slug}
-              href={`/profs/${teacher.slug}`}
-              main={
-                <div className="flex items-center gap-4">
-                  {/* Photo du prof. Rendue en `<img>` côté serveur (la page est
-                      un RSC) plutôt qu'en composant client, avec un repli sur
-                      l'initiale quand aucune photo n'est renseignée. */}
-                  <span className="relative flex h-14 w-14 shrink-0 overflow-hidden rounded-full border border-border bg-surface-strong">
-                    {teacher.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={teacher.image}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center font-display text-lg text-muted">
-                        {(teacher.name ?? "?").charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </span>
-
-                  <div className="min-w-0">
-                    <p className="font-display text-xl font-medium leading-tight text-foreground">
-                      {teacher.name ?? "Prof de musique"}
-                    </p>
-                    <p className="mt-1.5 truncate text-sm text-muted">
-                      {teacher.instruments
-                        .slice(0, 4)
-                        .map((instrument) => instrument.name)
-                        .join(" · ")}
-                      {teacher.trialLessonOffered ? " · Cours d’essai" : ""}
-                    </p>
-                    {teacher.headline ? (
-                      <p className="mt-1 line-clamp-1 text-sm text-subtle">
-                        {teacher.headline}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              }
-              meta={
-                <>
-                  {teacher.hourlyRateCents !== null ? (
-                    <p className="font-medium text-foreground">
-                      {`${(teacher.hourlyRateCents / 100).toFixed(0)} €`}
-                      <span className="text-muted">/h</span>
-                    </p>
-                  ) : null}
-                  <div className="mt-1.5 flex items-center justify-end gap-3 text-xs text-muted">
-                    <RatingBadge
-                      average={teacher.rating.average}
-                      count={teacher.rating.count}
-                    />
-                    {teacher.city ? (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {teacher.city}
-                      </span>
-                    ) : teacher.teachesOnline ? (
-                      <span className="flex items-center gap-1">
-                        <Globe className="h-3 w-3" />
-                        Visio
-                      </span>
-                    ) : null}
-                  </div>
-                </>
-              }
-            />
-          ))}
-        </RowList>
+        <TeacherResultList results={results} className="mt-10" />
       )}
 
       {lastPage > 1 ? (

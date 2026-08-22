@@ -1,17 +1,36 @@
+import type { Metadata } from "next";
 import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import type { InstrumentFamily } from "@prisma/client";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, MapPin } from "lucide-react";
 
+import { FamilyIcon } from "@/components/family-icon";
 import { HeroSearch } from "@/components/hero-search";
 import { SiteHeader } from "@/components/site-header";
 import { Spotlight } from "@/components/spotlight";
 import prisma from "@/lib/prisma";
-import { FAMILY_STYLES } from "@/lib/instruments/family";
+import {
+  FAMILY_LABELS,
+  FAMILY_ORDER,
+  FAMILY_STYLES,
+} from "@/lib/instruments/family";
 import { buildScore } from "@/lib/instruments/score";
 import { searchTeachers, type SearchResult } from "@/lib/search/teachers";
+import {
+  jsonLdHtml,
+  organizationSchema,
+  websiteSchema,
+} from "@/lib/seo/structured-data";
 import { visibleTeacherWhere } from "@/lib/teacher/visibility";
 import { cn } from "@/lib/utils";
+
+/**
+ * Page d'accueil. Le titre et la description viennent du layout racine ; on ne
+ * fixe ici que le canonical, pour que la home n'existe que sous une seule URL.
+ */
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 /**
  * Page d'accueil.
@@ -163,8 +182,26 @@ export default async function HomePage() {
     cities.length > 0 ? count(cities.length, "ville") : null,
   ].filter(Boolean);
 
+  // Répertoire crawlable : les instruments groupés par famille, chacun pointant
+  // vers sa page de cours (`/cours/[slug]`). C'est le maillage interne qui fait
+  // découvrir et remonter ces pages — sans lui, elles ne vivraient que dans le
+  // sitemap. On ne liste que les familles réellement enseignées.
+  const repertoire = FAMILY_ORDER.map((family) => ({
+    family,
+    items: instruments.filter((item) => item.family === family),
+  })).filter((group) => group.items.length > 0);
+
   return (
     <>
+      {/* Données structurées de marque : identité (Organization) et site avec
+          sa boîte de recherche (WebSite + SearchAction), pour les sitelinks. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: jsonLdHtml([organizationSchema(), websiteSchema()]),
+        }}
+      />
+
       <SiteHeader />
 
       <main>
@@ -362,6 +399,83 @@ export default async function HomePage() {
                   </div>
                 ))}
               </div>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Répertoire : toutes les disciplines enseignées, groupées par famille,
+            chacune liée à sa page de cours. Section crawlable — c'est elle qui
+            fait circuler le référencement vers /cours/*, et le lecteur apprend
+            au passage la correspondance couleur → famille. */}
+        {repertoire.length > 0 ? (
+          <section className="border-t border-border">
+            <div className="mx-auto max-w-6xl px-4 py-16">
+              <div className="m-reveal">
+                <SectionHead>Toutes les disciplines</SectionHead>
+              </div>
+
+              {/* Tuiles par famille : une icône monoline dans la couleur de la
+                  famille illustre chaque groupe, les cours dessous pointent vers
+                  /cours/*. La couleur nomme la famille, l'icône lui donne un
+                  visage — le lecteur apprend la correspondance en descendant. */}
+              <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {repertoire.map((group, index) => (
+                  <div
+                    key={group.family}
+                    className="m-reveal flex flex-col gap-4 rounded-[var(--radius)] border border-border bg-background p-6 transition-colors hover:border-primary/40"
+                    style={reveal(index)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FamilyIcon family={group.family} />
+                      <div>
+                        <h3 className="font-display text-xl font-medium leading-none text-foreground">
+                          {FAMILY_LABELS[group.family]}
+                        </h3>
+                        <p className="mt-1 text-xs text-subtle">
+                          {group.items.length} discipline
+                          {group.items.length > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.slug}
+                          href={`/cours/${item.slug}`}
+                          className="text-sm text-muted underline-offset-4 transition-colors hover:text-primary hover:underline"
+                        >
+                          {item.name}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {cities.length > 0 ? (
+                <div className="m-reveal mt-12">
+                  <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-foreground">
+                    <span aria-hidden className="text-accent">
+                      ❧
+                    </span>
+                    Par ville
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-2.5">
+                    {cities.map((entry) =>
+                      entry.city ? (
+                        <Link
+                          key={entry.city}
+                          href={`/profs?ville=${encodeURIComponent(entry.city)}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
+                        >
+                          <MapPin className="h-3.5 w-3.5 text-accent" />
+                          {entry.city}
+                        </Link>
+                      ) : null
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}

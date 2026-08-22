@@ -251,12 +251,20 @@ export default async function TeacherPublicPage({
               </p>
             ) : null}
 
+            {/* Badges cliquables vers la page de cours de l'instrument : c'est
+                du maillage interne (chaque fiche prof pointe vers les hubs
+                /cours/*) autant qu'un raccourci pour l'élève. */}
             <div className="flex flex-wrap gap-2">
               {instruments.map((instrument) => (
-                <Badge key={instrument.slug} variant="secondary">
-                  <Music className="mr-1 h-3 w-3" />
-                  {instrument.name}
-                </Badge>
+                <Link key={instrument.slug} href={`/cours/${instrument.slug}`}>
+                  <Badge
+                    variant="secondary"
+                    className="transition-colors hover:bg-primary hover:text-white"
+                  >
+                    <Music className="mr-1 h-3 w-3" />
+                    {instrument.name}
+                  </Badge>
+                </Link>
               ))}
             </div>
           </header>

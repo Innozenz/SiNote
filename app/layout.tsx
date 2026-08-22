@@ -44,16 +44,37 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   ),
   title: {
-    default: "SiNote — cours de musique et de chant près de chez vous",
+    default:
+      "SiNote — cours de musique, chant, MAO et DJ : réservez en ligne",
     // Les pages publiques ne fixent que leur propre titre.
     template: "%s | SiNote",
   },
   description:
-    "Trouvez un prof de musique ou de chant, consultez ses disponibilités et réservez votre cours en ligne. Vous réglez le prof directement, sans commission.",
+    "Trouvez un professeur de musique, de chant, de MAO, de DJ ou de beatmaking, consultez ses disponibilités et réservez votre cours en ligne. Vous réglez le prof directement, sans commission.",
+  // Mots-clés cœur de cible. Google ne les lit plus pour le classement, mais
+  // d'autres moteurs et agrégateurs les exploitent encore, et le coût est nul.
+  keywords: [
+    "cours de musique",
+    "cours de chant",
+    "cours de guitare",
+    "cours de piano",
+    "cours de DJ",
+    "cours de MAO",
+    "beatmaking",
+    "réservation en ligne cours de musique",
+    "professeur de musique",
+    "école de musique",
+    "prof de musique en ligne",
+  ],
   openGraph: {
     siteName: "SiNote",
     locale: "fr_FR",
     type: "website",
+  },
+  // Les partages génèrent une grande vignette (image OG par défaut définie par
+  // app/opengraph-image.tsx).
+  twitter: {
+    card: "summary_large_image",
   },
 };
 
