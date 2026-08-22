@@ -1,3 +1,4 @@
+import { renderEmailHtml } from "./render-html";
 import type { Notification } from "./templates";
 
 /**
@@ -43,7 +44,10 @@ export async function sendNotification(
         from,
         to: notification.to,
         subject: notification.subject,
+        // On envoie les deux : le HTML habille l'e-mail, le texte sert de repli
+        // (clients sans HTML) et aide la délivrabilité.
         text: notification.text,
+        html: renderEmailHtml(notification),
       }),
     });
 

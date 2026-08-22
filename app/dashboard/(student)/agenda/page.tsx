@@ -123,7 +123,7 @@ export default async function StudentAgendaPage({
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <PageHeader eyebrow="Espace élève" title="Mon agenda" />
       <StudentAgenda
         rows={rows}

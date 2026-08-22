@@ -338,6 +338,8 @@ export function StudentAgenda({
             </div>
           </div>
 
+          <Legend />
+
           {rows.length === 0 ? (
             <p className="flex items-start gap-2 rounded-md bg-surface p-3 text-sm text-muted">
               <Info className="mt-0.5 h-4 w-4 shrink-0" />
@@ -370,6 +372,35 @@ export function StudentAgenda({
           ) : null}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Légende des statuts de cours. Pas de volet « grille » comme chez le prof :
+ * l'élève n'a pas de disponibilités, la grille ne porte donc que ses cours.
+ */
+function Legend() {
+  const lessons = [
+    { label: "Confirmé", className: "border-primary/40 bg-primary-soft" },
+    {
+      label: "En attente",
+      className: "border-dashed border-warning/60 bg-warning-soft",
+    },
+    { label: "Terminé", className: "border-success/40 bg-success-soft" },
+    { label: "Non honoré", className: "border-danger/40 bg-danger-soft" },
+  ];
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted">
+      {lessons.map((item) => (
+        <span key={item.label} className="flex items-center gap-1.5">
+          <span
+            className={cn("h-3 w-3 shrink-0 rounded-xs border", item.className)}
+          />
+          {item.label}
+        </span>
+      ))}
     </div>
   );
 }
