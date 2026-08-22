@@ -24,6 +24,7 @@ import { RichTextContent } from "@/components/rich-text-content";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { lessonTitle } from "@/lib/bookings/title";
 import { FILE_ACCEPT } from "@/lib/reports/attachments";
 import { notifySuccess } from "@/lib/toast";
@@ -43,6 +44,8 @@ export type ReportEditorLesson = {
   studentName: string;
   instrumentName: string;
   isTrial: boolean;
+  /** Titre libre donné par le prof ; vide → titre auto « Cours de … ». */
+  title: string;
   content: string;
   attachments: ReportAttachmentView[];
   /**
@@ -87,6 +90,8 @@ export function ReportEditor({
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(defaultOpen);
+  const [title, setTitle] = useState(lesson.title);
+  const [savedTitle, setSavedTitle] = useState(lesson.title);
   const [content, setContent] = useState(lesson.content);
   const [saved, setSaved] = useState(lesson.content);
   const [savingContent, setSavingContent] = useState(false);
@@ -112,8 +117,12 @@ export function ReportEditor({
     }
   }, [hashId]);
 
-  const dirty = content !== saved;
+  const dirty = content !== saved || title.trim() !== savedTitle.trim();
   const documented = saved.trim().length > 0 || attachments.length > 0;
+  // Titre affiché dans l'en-tête : celui du prof, ou le titre auto à défaut.
+  const heading =
+    savedTitle.trim() ||
+    `${lessonTitle(lesson.instrumentName, lesson.isTrial)} avec ${lesson.studentName}`;
 
   // Pièces jointes regroupées par type — images, notes audio, partitions — pour
   // que l'éditeur soit aussi lisible que la vue en lecture seule, plutôt qu'un
@@ -129,21 +138,24 @@ export function ReportEditor({
       const res = await fetch(base, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ title: title.trim() || null, content }),
       });
       const data = (await res.json().catch(() => null)) as
-        | { content?: string | null; error?: string }
+        | { title?: string | null; content?: string | null; error?: string }
         | null;
       if (!res.ok) {
         setError(data?.error ?? "L'enregistrement a échoué.");
         return;
       }
-      // On adopte la valeur renvoyée par le serveur : c'est elle qui a été
-      // assainie et stockée, donc la seule vérité pour la lecture et le prochain
+      // On adopte les valeurs renvoyées par le serveur : elles ont été assainies
+      // et stockées, donc la seule vérité pour la lecture et le prochain
       // « Modifier ».
       const stored = data?.content ?? "";
+      const storedTitle = data?.title ?? "";
       setContent(stored);
       setSaved(stored);
+      setTitle(storedTitle);
+      setSavedTitle(storedTitle);
       setEditingText(false);
       notifySuccess("Compte rendu enregistré.");
       router.refresh();
@@ -257,11 +269,12 @@ export function ReportEditor({
         className="flex w-full items-center gap-3 px-4 py-3 text-left"
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">
-            {lessonTitle(lesson.instrumentName, lesson.isTrial)} avec{" "}
-            {lesson.studentName}
+          <p className="truncate text-sm font-medium">{heading}</p>
+          <p className="truncate text-xs text-muted">
+            {savedTitle.trim()
+              ? `${lessonTitle(lesson.instrumentName, lesson.isTrial)} avec ${lesson.studentName} · ${lesson.dateLabel}`
+              : lesson.dateLabel}
           </p>
-          <p className="truncate text-xs text-muted">{lesson.dateLabel}</p>
         </div>
 
         {!open && (attachments.length > 0 || commentCount > 0) ? (
@@ -320,6 +333,25 @@ export function ReportEditor({
                 vide, il n'y a rien à lire : le champ reste ouvert. */}
           {editingText || saved.trim().length === 0 ? (
             <div className="flex flex-col gap-2">
+              {/* Titre libre, optionnel : donne un intitulé au compte rendu à la
+                  place du « Cours de … avec … » automatique. */}
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor={`title-${lesson.bookingId}`}
+                  className="text-xs font-medium uppercase tracking-wide text-subtle"
+                >
+                  Titre <span className="normal-case text-subtle">(optionnel)</span>
+                </label>
+                <Input
+                  id={`title-${lesson.bookingId}`}
+                  value={title}
+                  disabled={savingContent}
+                  maxLength={200}
+                  placeholder={`Ex. ${lessonTitle(lesson.instrumentName, lesson.isTrial)} — les gammes`}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+
               <RichTextEditor
                 value={content}
                 disabled={savingContent}
@@ -333,7 +365,7 @@ export function ReportEditor({
                   {savingContent ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : null}
-                  Enregistrer le texte
+                  Enregistrer
                 </Button>
                 {saved.trim().length > 0 ? (
                   <Button
@@ -342,6 +374,7 @@ export function ReportEditor({
                     disabled={savingContent}
                     onClick={() => {
                       setContent(saved);
+                      setTitle(savedTitle);
                       setEditingText(false);
                     }}
                   >

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { PageTitle } from "@/components/editorial";
 import { ListFilters } from "@/components/list-filters";
+import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { ReportEditor, type ReportEditorLesson } from "@/components/report-editor";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -62,6 +63,7 @@ export default async function TeacherReportsPage({
       student: { select: { id: true, user: { select: { name: true } } } },
       report: {
         select: {
+          title: true,
           content: true,
           attachments: {
             orderBy: { createdAt: "asc" },
@@ -147,6 +149,7 @@ export default async function TeacherReportsPage({
     studentName: b.student.user.name ?? "Élève",
     instrumentName: b.instrument.name,
     isTrial: b.isTrial,
+    title: b.report?.title ?? "",
     content: b.report?.content ? sanitizeReportHtml(b.report.content) : "",
     attachments: b.report?.attachments ?? [],
     studentHref: `/dashboard/prof/eleves/${b.student.id}`,
@@ -154,6 +157,7 @@ export default async function TeacherReportsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+      <MarkReportsSeen />
       <header className="flex flex-col gap-2 border-b border-border pb-6">
         <PageTitle size="page">Comptes rendus</PageTitle>
         <p className="text-sm text-muted">

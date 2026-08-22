@@ -15,6 +15,9 @@ import { sanitizeReportHtml } from "@/lib/reports/sanitize";
  * texte est optionnel : un compte rendu peut n'être que des pièces jointes.
  */
 const putSchema = z.object({
+  // Titre libre, optionnel : à défaut, l'affichage retombe sur le titre auto
+  // « Cours de … ». Texte simple, rendu échappé par React côté vues.
+  title: z.string().max(200).nullish(),
   content: z.string().max(5000).nullable(),
 });
 
@@ -68,6 +71,9 @@ export async function PUT(
         ? sanitized
         : null;
 
+    // Titre : texte simple, réduit à null quand vide.
+    const title = parsed.data.title?.trim() ? parsed.data.title.trim() : null;
+
     const existing = await prisma.lessonReport.findUnique({
       where: { bookingId: access.booking.id },
       select: { content: true },
@@ -75,9 +81,9 @@ export async function PUT(
 
     const report = await prisma.lessonReport.upsert({
       where: { bookingId: access.booking.id },
-      create: { bookingId: access.booking.id, content },
-      update: { content },
-      select: { id: true, content: true, updatedAt: true },
+      create: { bookingId: access.booking.id, title, content },
+      update: { title, content },
+      select: { id: true, title: true, content: true, updatedAt: true },
     });
 
     // On prévient l'élève au premier compte rendu (vide → renseigné), pas à

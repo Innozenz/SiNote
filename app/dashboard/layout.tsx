@@ -45,8 +45,10 @@ export default async function DashboardLayout({
       name: true,
       email: true,
       image: true,
-      teacherProfile: { select: { id: true } },
-      studentProfile: { select: { id: true, coursSeenAt: true } },
+      teacherProfile: { select: { id: true, reportsSeenAt: true } },
+      studentProfile: {
+        select: { id: true, coursSeenAt: true, reportsSeenAt: true },
+      },
     },
   });
 
@@ -64,11 +66,19 @@ export default async function DashboardLayout({
   //   règle que `isStudentNews` ; un élève a peu de cours, on filtre en mémoire) ;
   // - « Messages » : fils non lus, comptés en une requête indexée plutôt qu'en
   //   rapatriant les messages (cf. `messageUnreadCount`).
+  // - « Comptes rendus » (prof) / « Mes dossiers » (élève) : commentaires de
+  //   compte rendu écrits par l'autre partie depuis la dernière consultation
+  //   (`reportsSeenAt`), même patron que « Mes cours ».
   const teacherProfile = user.teacherProfile;
   const studentProfile = user.studentProfile;
   const profile = teacherProfile ?? studentProfile;
 
-  const [pendingCount, studentNewsCount, messagesUnread] = await Promise.all([
+  const [
+    pendingCount,
+    studentNewsCount,
+    messagesUnread,
+    reportCommentsUnread,
+  ] = await Promise.all([
     teacherProfile
       ? prisma.booking.count({
           where: {
@@ -101,6 +111,25 @@ export default async function DashboardLayout({
     profile
       ? messageUnreadCount(teacherProfile ? "TEACHER" : "STUDENT", profile.id)
       : Promise.resolve(0),
+    teacherProfile
+      ? prisma.message.count({
+          where: {
+            teacherId: teacherProfile.id,
+            reportId: { not: null },
+            sender: "STUDENT",
+            createdAt: { gt: teacherProfile.reportsSeenAt },
+          },
+        })
+      : studentProfile
+        ? prisma.message.count({
+            where: {
+              studentId: studentProfile.id,
+              reportId: { not: null },
+              sender: "TEACHER",
+              createdAt: { gt: studentProfile.reportsSeenAt },
+            },
+          })
+        : Promise.resolve(0),
   ]);
 
   return (
@@ -111,7 +140,9 @@ export default async function DashboardLayout({
         user={{ name: user.name, email: user.email, image: user.image }}
         badges={{
           "/dashboard/prof/demandes": pendingCount,
+          "/dashboard/prof/comptes-rendus": teacherProfile ? reportCommentsUnread : 0,
           "/dashboard/cours": studentNewsCount,
+          "/dashboard/dossiers": studentProfile ? reportCommentsUnread : 0,
           "/dashboard/messages": messagesUnread,
         }}
       />

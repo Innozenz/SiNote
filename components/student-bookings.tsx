@@ -283,6 +283,9 @@ export function StudentBookings({
           <p className="mb-3 text-xs font-medium uppercase tracking-wide text-subtle">
             Compte rendu
           </p>
+          {row.report.title ? (
+            <p className="mb-2 font-medium">{row.report.title}</p>
+          ) : null}
           <ReportViewer bookingId={row.id} report={row.report} me="STUDENT" />
         </div>
       ) : null}

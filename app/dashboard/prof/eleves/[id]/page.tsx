@@ -6,6 +6,7 @@ import { ChevronLeft, FileText } from "lucide-react";
 import { PageTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
 import { ListFilters } from "@/components/list-filters";
+import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { MarkThreadRead } from "@/components/mark-thread-read";
 import { MessageThread } from "@/components/message-thread";
 import { ReportEditor } from "@/components/report-editor";
@@ -101,6 +102,7 @@ export default async function StudentFilePage({
           instrument: { select: { name: true } },
           report: {
             select: {
+              title: true,
               content: true,
               attachments: {
                 orderBy: { createdAt: "asc" },
@@ -375,13 +377,17 @@ export default async function StudentFilePage({
       ) : null}
 
       {active === "comptes-rendus" ? (
-        documentable.length === 0 ? (
-          <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
-            Aucun cours à documenter pour cet élève pour l&apos;instant. Un
-            compte rendu s&apos;ouvre dès qu&apos;un cours confirmé a commencé.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4">
+        <>
+          {/* Lire/répondre ici vaut consultation : la pastille « Comptes
+              rendus » tombe aussi depuis la fiche élève, pas seulement l'atelier. */}
+          <MarkReportsSeen />
+          {documentable.length === 0 ? (
+            <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
+              Aucun cours à documenter pour cet élève pour l&apos;instant. Un
+              compte rendu s&apos;ouvre dès qu&apos;un cours confirmé a commencé.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
             <ListFilters
               searchKey="cr_q"
               searchPlaceholder="Rechercher dans les comptes rendus…"
@@ -418,6 +424,7 @@ export default async function StudentFilePage({
                     studentName: name,
                     instrumentName: b.instrument.name,
                     isTrial: b.isTrial,
+                    title: b.report?.title ?? "",
                     content: b.report?.content ? sanitizeReportHtml(b.report.content) : "",
                     attachments: b.report?.attachments ?? [],
                   }}
@@ -429,7 +436,8 @@ export default async function StudentFilePage({
               ))}
             </div>
           </div>
-        )
+          )}
+        </>
       ) : null}
     </div>
   );

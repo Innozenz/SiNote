@@ -7,6 +7,7 @@ import { CollapsibleReport } from "@/components/collapsible-report";
 import { PageTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
 import { ListFilters } from "@/components/list-filters";
+import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { MarkThreadRead } from "@/components/mark-thread-read";
 import { MessageThread } from "@/components/message-thread";
 import { ReportViewer } from "@/components/report-view";
@@ -77,6 +78,7 @@ export default async function StudentDossierPage({
           instrument: { select: { name: true } },
           report: {
             select: {
+              title: true,
               content: true,
               attachments: {
                 orderBy: { createdAt: "asc" },
@@ -294,12 +296,16 @@ export default async function StudentDossierPage({
       ) : null}
 
       {active === "comptes-rendus" ? (
-        reports.length === 0 ? (
-          <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
-            Aucun compte rendu pour l&apos;instant.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-4">
+        <>
+          {/* Marque les comptes rendus de ce prof comme lus : la pastille
+              « Mes dossiers » tombe une fois l'onglet ouvert. */}
+          <MarkReportsSeen />
+          {reports.length === 0 ? (
+            <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
+              Aucun compte rendu pour l&apos;instant.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
             <ListFilters
               searchKey="cr_q"
               searchPlaceholder="Rechercher dans les comptes rendus…"
@@ -331,7 +337,7 @@ export default async function StudentDossierPage({
                   className="scroll-mt-20 overflow-hidden rounded-lg border border-border"
                 >
                   <CollapsibleReport
-                    title={lessonTitle(b.instrument.name, b.isTrial)}
+                    title={b.report!.title?.trim() || lessonTitle(b.instrument.name, b.isTrial)}
                     dateLabel={dateFormat.format(b.startsAt)}
                     statusLabel={STATUS_LABELS[b.status] ?? b.status}
                     statusVariant={b.status === "CONFIRMED" ? "success" : "secondary"}
@@ -359,7 +365,8 @@ export default async function StudentDossierPage({
               ))}
             </ul>
           </div>
-        )
+          )}
+        </>
       ) : null}
     </div>
   );

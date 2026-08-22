@@ -53,6 +53,7 @@ export default async function StudentBookingsPage() {
       review: { select: { rating: true, comment: true, publishedAt: true } },
       report: {
         select: {
+          title: true,
           content: true,
           attachments: {
             orderBy: { createdAt: "asc" },
@@ -105,6 +106,7 @@ export default async function StudentBookingsPage() {
       : null,
     report: booking.report
       ? {
+          title: booking.report.title,
           content: booking.report.content
             ? sanitizeReportHtml(booking.report.content)
             : null,

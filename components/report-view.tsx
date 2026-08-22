@@ -7,6 +7,8 @@ import { ReportImages } from "@/components/report-images";
 import { RichTextContent } from "@/components/rich-text-content";
 
 export type ReportView = {
+  /** Titre libre du prof ; vide → l'appelant retombe sur le titre auto. */
+  title?: string | null;
   content: string | null;
   attachments: {
     id: string;

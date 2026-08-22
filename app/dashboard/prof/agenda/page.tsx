@@ -9,6 +9,8 @@ import {
 import { TeacherMonth, type MonthLesson } from "@/components/teacher-month";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { isMinor } from "@/lib/student/profile";
+import { ageOn } from "@/lib/user/age";
 import { addDays, civilDateKeyInZone } from "@/lib/availability/zone";
 import {
   buildMonthAgenda,
@@ -215,24 +217,75 @@ export default async function TeacherAgendaPage({
         priceCents: true,
         studentMessage: true,
         instrument: { select: { name: true } },
-        student: { select: { id: true, user: { select: { name: true } } } },
+        student: {
+          select: {
+            id: true,
+            // Profil complet : le prof peut le consulter en modale depuis un
+            // cours de l'agenda, comme sur une demande.
+            birthDate: true,
+            city: true,
+            goals: true,
+            musicalBackground: true,
+            readsSheetMusic: true,
+            voiceType: true,
+            prefersOnline: true,
+            preferredGenres: true,
+            guardianName: true,
+            guardianEmail: true,
+            guardianPhone: true,
+            user: { select: { name: true } },
+            instruments: {
+              select: {
+                level: true,
+                yearsPracticed: true,
+                ownsInstrument: true,
+                instrument: { select: { name: true } },
+              },
+            },
+          },
+        },
       },
     }),
   ]);
 
-  const rows: AgendaRow[] = bookings.map((booking) => ({
-    id: booking.id,
-    status: booking.status as AgendaRow["status"],
-    startsAt: booking.startsAt.toISOString(),
-    endsAt: booking.endsAt.toISOString(),
-    mode: booking.mode,
-    isTrial: booking.isTrial,
-    priceCents: booking.priceCents,
-    studentMessage: booking.studentMessage,
-    instrumentName: booking.instrument.name,
-    studentId: booking.student.id,
-    studentName: booking.student.user.name,
-  }));
+  const rows: AgendaRow[] = bookings.map((booking) => {
+    const student = booking.student;
+    return {
+      id: booking.id,
+      status: booking.status as AgendaRow["status"],
+      startsAt: booking.startsAt.toISOString(),
+      endsAt: booking.endsAt.toISOString(),
+      mode: booking.mode,
+      isTrial: booking.isTrial,
+      priceCents: booking.priceCents,
+      studentMessage: booking.studentMessage,
+      instrumentName: booking.instrument.name,
+      studentId: student.id,
+      studentName: student.user.name,
+      studentProfile: {
+        age: student.birthDate ? ageOn(student.birthDate, now) : null,
+        isMinor: isMinor(student.birthDate, now),
+        city: student.city,
+        goals: student.goals,
+        background: student.musicalBackground,
+        readsSheetMusic: student.readsSheetMusic,
+        voiceType: student.voiceType,
+        prefersOnline: student.prefersOnline,
+        genres: student.preferredGenres,
+        instruments: student.instruments.map((entry) => ({
+          name: entry.instrument.name,
+          level: entry.level,
+          yearsPracticed: entry.yearsPracticed,
+          ownsInstrument: entry.ownsInstrument,
+        })),
+        guardian: {
+          name: student.guardianName,
+          email: student.guardianEmail,
+          phone: student.guardianPhone,
+        },
+      },
+    };
+  });
 
   return (
     <TeacherAgenda

@@ -257,6 +257,11 @@ model TeacherProfile {
   messages       Message[]
   messageThreads MessageThreadState[]
 
+  // Dernière consultation des comptes rendus : repère du signal in-app (pastille
+  // sur « Comptes rendus »). Un commentaire d'élève postérieur est « non lu ».
+  // Même patron que StudentProfile.coursSeenAt — défaut now() pour partir à jour.
+  reportsSeenAt DateTime @default(now())
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -320,6 +325,10 @@ model StudentProfile {
   // visite de la page. Défaut = now() : à la création comme à la migration, un
   // profil part « à jour », rien n'est signalé tant que rien ne change après.
   coursSeenAt DateTime @default(now())
+
+  // Dernière consultation des comptes rendus (pastille sur « Mes dossiers »). Un
+  // commentaire du prof postérieur est « non lu ». Cf. reportsSeenAt côté prof.
+  reportsSeenAt DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -568,6 +577,7 @@ model LessonReport {
   bookingId String  @unique
   booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
+  title   String? // titre libre donné par le prof ; à défaut, titre auto « Cours de … »
   content String? // le texte du compte rendu
 
   attachments ReportAttachment[]

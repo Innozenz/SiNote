@@ -29,6 +29,10 @@ import {
   AgendaViewSwitch,
   type AgendaNav,
 } from "@/components/agenda-view-switch";
+import {
+  StudentProfileBody,
+  type StudentProfileView,
+} from "@/components/student-profile-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,6 +90,8 @@ export type AgendaRow = {
   instrumentName: string;
   studentId: string;
   studentName: string | null;
+  /** Profil complet de l'élève, montré dans la modale « Voir le profil ». */
+  studentProfile: StudentProfileView;
 };
 
 /** Règle hebdomadaire, bornes de validité en dates civiles AAAA-MM-JJ. */
@@ -284,6 +290,8 @@ export function TeacherAgenda({
 }) {
   const [rows, setRows] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Modale « profil de l'élève », ouverte par-dessus le détail du cours.
+  const [showProfile, setShowProfile] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Glisser-déposer. `bodyRef` sert à convertir la position du pointeur en
@@ -305,6 +313,7 @@ export function TeacherAgenda({
   useEffect(() => {
     setRows(initial);
     setSelectedId(null);
+    setShowProfile(false);
   }, [initial]);
 
   const agenda = useMemo(
@@ -697,7 +706,10 @@ export function TeacherAgenda({
       <Dialog
         open={selected !== null}
         onOpenChange={(open) => {
-          if (!open) setSelectedId(null);
+          if (!open) {
+            setSelectedId(null);
+            setShowProfile(false);
+          }
         }}
       >
         <DialogContent>
@@ -708,7 +720,40 @@ export function TeacherAgenda({
               now={now}
               busy={busy}
               onAct={act}
+              onShowProfile={() => setShowProfile(true)}
             />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Profil complet de l'élève, par-dessus le détail du cours — même contenu
+          que la modale « Voir le profil » des demandes. */}
+      <Dialog
+        open={showProfile && selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setShowProfile(false);
+        }}
+      >
+        <DialogContent>
+          {selected ? (
+            <div className="flex flex-col gap-5">
+              <DialogHeader>
+                <DialogTitle>{selected.studentName ?? "Élève"}</DialogTitle>
+                <DialogDescription>
+                  {[
+                    selected.studentProfile.age !== null
+                      ? `${selected.studentProfile.age} ans`
+                      : null,
+                    selected.studentProfile.city,
+                    selected.instrumentName,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </DialogDescription>
+              </DialogHeader>
+
+              <StudentProfileBody profile={selected.studentProfile} />
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>
@@ -953,12 +998,15 @@ function BookingDetail({
   now,
   busy,
   onAct,
+  onShowProfile,
 }: {
   row: AgendaRow;
   timezone: string;
   now: Date;
   busy: boolean;
   onAct: (id: string, action: BookingAction) => void;
+  /** Ouvre la modale du profil complet de l'élève. */
+  onShowProfile: () => void;
 }) {
   const startsAt = new Date(row.startsAt);
   const endsAt = new Date(row.endsAt);
@@ -1058,13 +1106,18 @@ function BookingDetail({
         </p>
       )}
 
-      {/* Accès direct à la fiche de l'élève : son profil complet (onglet par
-          défaut) et, quand le cours est documentable, son compte rendu ancré. */}
+      {/* Profil en modale (aperçu rapide) et accès à la fiche complète de
+          l'élève (historique, note privée, comptes rendus). */}
       <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={onShowProfile}>
+          <User className="mr-2 h-3 w-3" />
+          Voir le profil
+        </Button>
+
         <Button asChild variant="outline" size="sm">
           <Link href={`/dashboard/prof/eleves/${row.studentId}`}>
             <User className="mr-2 h-3 w-3" />
-            Profil de l&apos;élève
+            Fiche complète
           </Link>
         </Button>
 
