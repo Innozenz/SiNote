@@ -2,7 +2,9 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { notifyAdminsInBackground } from "@/lib/admin/notify";
 import { auth } from "@/lib/auth";
+import { buildTeacherSignupNotifications } from "@/lib/notifications/teacher-signup";
 import prisma from "@/lib/prisma";
 import { uniqueSlug } from "@/lib/slug";
 
@@ -95,6 +97,17 @@ export async function POST(request: Request) {
       // et de toute façon invisible tant que l'abonnement n'est pas actif.
       prisma.teacherProfile.create({ data: { userId: user.id, slug } }),
     ]);
+
+    // Une fiche naît invisible : sans ce message, l'équipe ne découvre un
+    // nouveau prof qu'en ouvrant l'administration. Non attendu — l'inscription
+    // vaut que l'e-mail parte ou non.
+    notifyAdminsInBackground("TEACHER_SIGNUP", (recipients, appUrl) =>
+      buildTeacherSignupNotifications(
+        recipients,
+        { name: user.name, email: user.email, slug, timezone },
+        appUrl
+      )
+    );
 
     return NextResponse.json(
       { role, slug, redirectTo: "/dashboard" },
