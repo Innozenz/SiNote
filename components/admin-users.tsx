@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Loader2, ShieldAlert } from "lucide-react";
+import { CalendarClock, Loader2, ShieldAlert, Trash2 } from "lucide-react";
 
 import { SectionTitle } from "@/components/editorial";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -95,7 +96,8 @@ function inOneMonth(): string {
  * Îlot client d'une page serveur : la recherche et le filtre de rôle vivent
  * dans l'URL (`ListFilters`, côté serveur) ; ici on ne fait qu'afficher les
  * lignes reçues et ouvrir le détail. Tout est en lecture sauf **l'accès d'un
- * prof** — offrir / prolonger / révoquer une date, jamais un appel Stripe.
+ * prof** — offrir / prolonger / révoquer une date, jamais un appel Stripe — et
+ * la **suppression du compte**, refusée pour un administrateur.
  */
 export function AdminUsers({ rows }: { rows: AdminUserRow[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -146,7 +148,9 @@ export function AdminUsers({ rows }: { rows: AdminUserRow[] }) {
         }}
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto">
-          {selected ? <UserDetail row={selected} /> : null}
+          {selected ? (
+            <UserDetail row={selected} onDeleted={() => setSelectedId(null)} />
+          ) : null}
         </DialogContent>
       </Dialog>
     </>
@@ -171,7 +175,13 @@ function AccessBadge({ teacher }: { teacher: NonNullable<AdminUserRow["teacher"]
   return <Badge variant="destructive">Expiré</Badge>;
 }
 
-function UserDetail({ row }: { row: AdminUserRow }) {
+function UserDetail({
+  row,
+  onDeleted,
+}: {
+  row: AdminUserRow;
+  onDeleted: () => void;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <DialogHeader>
@@ -203,7 +213,107 @@ function UserDetail({ row }: { row: AdminUserRow }) {
 
       {row.teacher ? <TeacherSection userId={row.id} teacher={row.teacher} /> : null}
       {row.student ? <StudentSection student={row.student} /> : null}
+
+      <DangerZone row={row} onDeleted={onDeleted} />
     </div>
+  );
+}
+
+/**
+ * Suppression du compte.
+ *
+ * Absente pour un administrateur : la capacité s'accorde et se retire à la
+ * main en base, et l'API refuse de toute façon (409). Le dialogue nomme ce qui
+ * part avec le compte, chiffres à l'appui, parce que la cascade emporte aussi
+ * l'historique de l'autre partie de chaque cours.
+ */
+function DangerZone({
+  row,
+  onDeleted,
+}: {
+  row: AdminUserRow;
+  onDeleted: () => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (row.isAdmin) {
+    return (
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Suppression</SectionTitle>
+        <p className="text-sm text-muted">
+          Un administrateur ne peut pas être supprimé depuis cette interface.
+        </p>
+      </section>
+    );
+  }
+
+  const bookings =
+    (row.teacher?.counts.bookings ?? 0) + (row.student?.counts.bookings ?? 0);
+  const reviews = row.teacher?.counts.reviews ?? 0;
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      const result = await postJson(`/api/admin/users/${row.id}`, {
+        method: "DELETE",
+      });
+      if (!result.ok) {
+        notifyFailure(result.failure);
+        return;
+      }
+      setOpen(false);
+      onDeleted();
+      notifySuccess("Compte supprimé.");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionTitle>Suppression</SectionTitle>
+      <p className="text-sm text-muted">
+        Supprime le compte et tout ce qui s&apos;y rattache. Irréversible.
+      </p>
+      <div>
+        <Button size="sm" variant="destructive" onClick={() => setOpen(true)}>
+          <Trash2 className="mr-2 h-4 w-4" />
+          Supprimer ce compte
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`Supprimer le compte de ${row.name} ?`}
+        description={`${row.email} ne pourra plus se connecter et son compte disparaît définitivement.`}
+        confirmLabel="Supprimer définitivement"
+        destructive
+        busy={busy}
+        onConfirm={remove}
+      >
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
+          {row.teacher ? (
+            <li>
+              Sa fiche prof, ses disponibilités
+              {row.teacher.kind === "stripe"
+                ? " et son abonnement Stripe (résilié immédiatement)"
+                : ""}
+              .
+            </li>
+          ) : null}
+          <li>
+            {bookings} cours, y compris dans l&apos;historique des{" "}
+            {row.teacher ? "élèves" : "profs"} concernés.
+          </li>
+          {reviews > 0 ? <li>{reviews} avis reçus.</li> : null}
+          <li>Ses avis donnés, ses messages, ses comptes rendus et leurs pièces jointes.</li>
+        </ul>
+      </ConfirmDialog>
+    </section>
   );
 }
 
