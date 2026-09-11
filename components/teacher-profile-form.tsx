@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { AvatarUploader } from "@/components/avatar-uploader";
-import { PageTitle, SectionTitle } from "@/components/editorial";
+import { PageHeader, SectionTitle } from "@/components/editorial";
 import { FormFailure } from "@/components/form-failure";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,34 +167,40 @@ export function TeacherProfileForm({
     : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
+    <div className="flex flex-col gap-10">
       {/* En-tête + état de publication */}
-      <header className="flex flex-col gap-4 border-b border-border pb-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <PageTitle size="page">Ma fiche</PageTitle>
-            <Badge variant={isPublished ? "success" : "secondary"}>
-              {isPublished ? "Publiée" : "Brouillon"}
-            </Badge>
-          </div>
-          <Button
-            variant={isPublished ? "outline" : "success"}
-            disabled={isPublishing || (!isPublished && !canPublish)}
-            onClick={togglePublish}
-          >
-            {isPublishing ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : isPublished ? (
-              <EyeOff className="mr-2 h-4 w-4" />
-            ) : (
-              <Eye className="mr-2 h-4 w-4" />
-            )}
-            {isPublished ? "Dépublier" : "Publier ma fiche"}
-          </Button>
-        </div>
-        <p className="text-sm text-muted">
-          Adresse publique : <code>/profs/{profile.slug}</code>
-        </p>
+      <div className="flex flex-col gap-4">
+        <PageHeader
+          size="page"
+          eyebrow="Espace professeur"
+          title="Ma fiche"
+          lead={
+            <>
+              Adresse publique : <code>/profs/{profile.slug}</code>
+            </>
+          }
+          meta={
+            <div className="flex items-center gap-3 sm:justify-end">
+              <Badge variant={isPublished ? "success" : "secondary"}>
+                {isPublished ? "Publiée" : "Brouillon"}
+              </Badge>
+              <Button
+                variant={isPublished ? "outline" : "success"}
+                disabled={isPublishing || (!isPublished && !canPublish)}
+                onClick={togglePublish}
+              >
+                {isPublishing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : isPublished ? (
+                  <EyeOff className="mr-2 h-4 w-4" />
+                ) : (
+                  <Eye className="mr-2 h-4 w-4" />
+                )}
+                {isPublished ? "Dépublier" : "Publier ma fiche"}
+              </Button>
+            </div>
+          }
+        />
 
         {!canPublish || !profile.subscriptionActive ? (
           <div className="flex flex-col gap-3">
@@ -220,7 +226,7 @@ export function TeacherProfileForm({
             ) : null}
           </div>
         ) : null}
-      </header>
+      </div>
 
       {/* Photo de profil — appartient à l'utilisateur, s'enregistre seule. */}
       <section className="flex flex-col gap-5">

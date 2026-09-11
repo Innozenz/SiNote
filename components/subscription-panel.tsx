@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CreditCard, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 
-import { PageTitle } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import { Badge } from "@/components/ui/badge";
 import { FormFailure } from "@/components/form-failure";
 import { Button } from "@/components/ui/button";
@@ -60,8 +60,27 @@ export function SubscriptionPanel({
     window.location.href = result.data.url;
   };
 
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: timezone,
+    });
+
+  // Trois états, trois phrases : actif jusqu'à une date, expiré à une date,
+  // jamais souscrit. « Inactif » seul ne disait pas à un prof dont l'accès
+  // venait d'expirer *que* c'était le cas, ni depuis quand.
+  const status = isActive
+    ? currentPeriodEnd
+      ? `Actif jusqu'au ${formatDate(currentPeriodEnd)}`
+      : "Abonnement en cours"
+    : currentPeriodEnd
+      ? `Votre accès a expiré le ${formatDate(currentPeriodEnd)}`
+      : "Aucun abonnement";
+
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className="flex flex-col gap-8">
       {/* Le retour de Stripe passe par l'URL : l'état réel, lui, arrive par
           webhook et peut avoir quelques secondes de retard. */}
       {flash === "success" && !isActive ? (
@@ -76,34 +95,35 @@ export function SubscriptionPanel({
         </p>
       ) : null}
 
-      <header className="flex flex-col gap-4 border-b border-border pb-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <PageTitle size="page">Abonnement</PageTitle>
-            <Badge variant={isActive ? "success" : "secondary"}>
-              {isActive ? "Actif" : "Inactif"}
-            </Badge>
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Abonnement"
+        lead="L'abonnement rend votre fiche visible des élèves. Les cours, eux, vous sont réglés directement : SiNote ne prend aucune commission."
+        meta={
+          <div className="flex flex-col gap-2 sm:items-end">
+            <Badge variant={isActive ? "success" : "secondary"}>{status}</Badge>
+            {/* Le portail Stripe n'existe que pour un client Stripe : sans lui
+                la route répond 409, et un prof sur accès manuel ne doit pas
+                avoir deux boutons concurrents. */}
+            {hasCustomer ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => go("portal")}
+              >
+                {busy === "portal" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                )}
+                Gérer mon abonnement
+              </Button>
+            ) : null}
           </div>
-          {isActive || hasCustomer ? (
-            <Button
-              variant="outline"
-              disabled={busy !== null}
-              onClick={() => go("portal")}
-            >
-              {busy === "portal" ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <ExternalLink className="mr-2 h-4 w-4" />
-              )}
-              Gérer mon abonnement
-            </Button>
-          ) : null}
-        </div>
-        <p className="text-sm text-muted">
-          L&apos;abonnement rend votre fiche visible des élèves. Les cours, eux,
-          vous sont réglés directement : SiNote ne prend aucune commission.
-        </p>
-      </header>
+        }
+      />
 
       <div className="flex flex-col gap-4">
         {isActive ? (
@@ -111,7 +131,7 @@ export function SubscriptionPanel({
               <div className="flex items-center gap-2 text-sm text-muted">
                 <ShieldCheck className="h-4 w-4 text-success" />
                 {currentPeriodEnd
-                  ? `Prochain renouvellement le ${new Date(currentPeriodEnd).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: timezone })}`
+                  ? `Prochain renouvellement le ${formatDate(currentPeriodEnd)}`
                   : "Abonnement en cours"}
               </div>
 

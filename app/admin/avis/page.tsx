@@ -1,3 +1,6 @@
+import type { Metadata } from "next";
+
+import { PageHeader } from "@/components/editorial";
 import {
   ReviewModeration,
   type ModerationRow,
@@ -24,6 +27,8 @@ import { givenName } from "@/lib/user/name";
  * qu'il dépend d'un rang calculé, pas d'une colonne — et la file est bornée à
  * 200 lignes, donc trier en mémoire ne coûte rien.
  */
+export const metadata: Metadata = { title: "Modération des avis" };
+
 export default async function AdminReviewsPage() {
   const reviews = await prisma.review.findMany({
     orderBy: { createdAt: "desc" },
@@ -89,16 +94,16 @@ export default async function AdminReviewsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Avis</h1>
-        <p className="mt-1 text-sm text-muted">
-          {`Les avis sont publiés dès leur dépôt. ${summary} ${
-            hidden > 0
-              ? `${hidden} avis actuellement masqué${hidden > 1 ? "s" : ""}.`
-              : "Aucun avis masqué."
-          }`}
-        </p>
-      </header>
+      <PageHeader
+        size="page"
+        eyebrow="Administration"
+        title="Avis"
+        lead={`Les avis sont publiés dès leur dépôt. ${summary} ${
+          hidden > 0
+            ? `${hidden} avis actuellement masqué${hidden > 1 ? "s" : ""}.`
+            : "Aucun avis masqué."
+        }`}
+      />
 
       <ReviewModeration initial={ordered} />
     </div>

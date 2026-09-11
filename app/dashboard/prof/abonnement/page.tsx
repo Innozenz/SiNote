@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -14,6 +15,8 @@ import { isSubscriptionActive } from "@/lib/teacher/visibility";
  * navigation : ils ne prouvent rien, le webhook peut arriver après. L'écran le
  * dit plutôt que d'annoncer une activation qui n'est pas encore enregistrée.
  */
+export const metadata: Metadata = { title: "Abonnement" };
+
 export default async function SubscriptionPage({
   searchParams,
 }: {

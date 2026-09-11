@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, FileText } from "lucide-react";
 
 import { CollapsibleReport } from "@/components/collapsible-report";
-import { PageTitle } from "@/components/editorial";
+import { Eyebrow, PageTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
 import { ListFilters } from "@/components/list-filters";
 import { MarkReportsSeen } from "@/components/mark-reports-seen";
@@ -18,6 +18,7 @@ import { auth } from "@/lib/auth";
 import { lessonTitle } from "@/lib/bookings/title";
 import prisma from "@/lib/prisma";
 import { sanitizeReportHtml } from "@/lib/reports/sanitize";
+import { isTeacherVisible } from "@/lib/teacher/visibility";
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "En attente",
@@ -67,6 +68,8 @@ export default async function StudentDossierPage({
     select: {
       id: true,
       slug: true,
+      status: true,
+      stripeCurrentPeriodEnd: true,
       user: { select: { name: true, image: true, timezone: true } },
       bookings: {
         where: { studentId: student.id },
@@ -214,7 +217,7 @@ export default async function StudentDossierPage({
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
         <Link
           href="/dashboard/dossiers"
@@ -230,13 +233,23 @@ export default async function StudentDossierPage({
             <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
+            <Eyebrow className="mb-2">Dossier prof</Eyebrow>
             <PageTitle size="page">{name}</PageTitle>
-            <Link
-              href={`/profs/${teacher.slug}`}
-              className="mt-1 inline-block text-sm text-primary hover:underline"
-            >
-              Voir la fiche publique
-            </Link>
+            {/* Le lien menait à une 404 dès que la fiche n'était plus visible
+                (abonnement échu, fiche dépubliée) ; le serveur sait pourquoi,
+                autant le dire. */}
+            {isTeacherVisible(teacher, new Date()) ? (
+              <Link
+                href={`/profs/${teacher.slug}`}
+                className="mt-1 inline-block text-sm text-primary hover:underline"
+              >
+                Voir la fiche publique
+              </Link>
+            ) : (
+              <p className="mt-1 text-sm text-subtle">
+                Fiche actuellement hors ligne.
+              </p>
+            )}
           </div>
         </div>
       </div>

@@ -86,6 +86,23 @@ export function BookingWidget({
   // disponible (ou restauré une sélection). Tant que non, on n'affiche que le
   // squelette — inutile de charger la semaine courante pour la remplacer aussitôt.
   const [ready, setReady] = useState(false);
+  // Premier créneau trouvé par le balayage à 62 jours : quand une semaine est
+  // vide, on peut dire *quand* est le prochain plutôt que « rien cette
+  // semaine » — qui laissait l'élève feuilleter à l'aveugle.
+  const [nextSlotAt, setNextSlotAt] = useState<string | null>(null);
+  const [scanned, setScanned] = useState(false);
+  // La note de fuseau n'a de sens que si celui du visiteur diffère. Calculée
+  // après montage : le serveur ne connaît pas le fuseau du navigateur.
+  const [foreignZone, setForeignZone] = useState(false);
+
+  useEffect(() => {
+    try {
+      const mine = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setForeignZone(Boolean(mine) && mine !== timezone);
+    } catch {
+      // Navigateur sans Intl complet : on n'affiche rien.
+    }
+  }, [timezone]);
 
   // Sélection conservée à travers l'aller-retour de connexion / onboarding : un
   // invité qui choisit un créneau puis part se connecter le retrouve à son
@@ -140,8 +157,10 @@ export function BookingWidget({
         const earliest = result.data.slots.reduce((a, b) =>
           a.startsAt <= b.startsAt ? a : b
         );
+        setNextSlotAt(earliest.startsAt);
         setWeekStart(startOfWeek(new Date(earliest.startsAt)));
       }
+      if (result.ok) setScanned(true);
       // Créneaux introuvables ou requête en échec : on reste sur la semaine
       // courante, l'affichage hebdo gère ensuite le vide / la relance.
       setReady(true);
@@ -278,28 +297,35 @@ export function BookingWidget({
           <CardTitle>Réserver un cours</CardTitle>
         </div>
         <CardDescription>
-          Horaires affichés dans le fuseau du prof ({timezone}).
+          {foreignZone
+            ? `Horaires affichés dans le fuseau du prof (${timezone}), pas dans le vôtre.`
+            : "Choisissez un créneau, puis envoyez votre demande."}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        {/* Navigation par semaine */}
-        <div className="flex items-center justify-between">
+        {/* Navigation par semaine. Le libellé au centre dit *quelle* semaine
+            est affichée : sans lui, le saut initial vers la première semaine
+            disponible laissait l'élève sans repère. */}
+        <div className="flex items-center justify-between gap-2">
           <Button
             variant="ghost"
             size="sm"
+            aria-label="Semaine précédente"
             disabled={weekStart <= startOfWeek(new Date())}
             onClick={() => setWeekStart(new Date(weekStart.getTime() - 7 * DAY_MS))}
           >
             <ChevronLeft className="h-4 w-4" />
-            Semaine précédente
           </Button>
+          <p className="text-sm font-medium first-letter:uppercase">
+            {formatWeek(weekStart)}
+          </p>
           <Button
             variant="ghost"
             size="sm"
+            aria-label="Semaine suivante"
             onClick={() => setWeekStart(new Date(weekStart.getTime() + 7 * DAY_MS))}
           >
-            Semaine suivante
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -317,9 +343,13 @@ export function BookingWidget({
             </Button>
           </div>
         ) : byDay.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted">
-            Aucun créneau disponible cette semaine.
-          </p>
+          <EmptyWeek
+            nextSlotAt={nextSlotAt}
+            scanned={scanned}
+            weekStart={weekStart}
+            timezone={timezone}
+            onJump={(date) => setWeekStart(startOfWeek(date))}
+          />
         ) : (
           <div className="flex flex-col gap-5">
             {byDay.map((day) => (
@@ -467,6 +497,56 @@ export function BookingWidget({
 }
 
 /**
+ * Semaine sans créneau. Trois cas, trois phrases : un prochain créneau connu
+ * (on dit quand, et on y va d'un clic) ; un balayage à 62 jours revenu vide
+ * (le prof n'a rien d'ouvert avant deux mois) ; pas encore de balayage
+ * concluant (formulation neutre).
+ */
+function EmptyWeek({
+  nextSlotAt,
+  scanned,
+  weekStart,
+  timezone,
+  onJump,
+}: {
+  nextSlotAt: string | null;
+  scanned: boolean;
+  weekStart: Date;
+  timezone: string;
+  onJump: (date: Date) => void;
+}) {
+  const next = nextSlotAt ? new Date(nextSlotAt) : null;
+  const weekEnd = new Date(weekStart.getTime() + 7 * DAY_MS);
+  const laterNext = next && next.getTime() >= weekEnd.getTime() ? next : null;
+
+  if (laterNext) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <p className="text-sm text-muted">
+          Aucun créneau cette semaine. Prochain créneau :{" "}
+          <span className="font-medium text-foreground first-letter:uppercase">
+            {formatDay(laterNext.toISOString(), timezone)}
+          </span>
+          {" à "}
+          {formatHour(laterNext.toISOString(), timezone)}.
+        </p>
+        <Button variant="outline" size="sm" onClick={() => onJump(laterNext)}>
+          Aller à cette semaine
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <p className="py-6 text-center text-sm text-muted">
+      {scanned && !next
+        ? "Aucun créneau dans les deux prochains mois. Ce prof n'a pas encore ouvert son agenda, ou il est complet."
+        : "Aucun créneau disponible cette semaine."}
+    </p>
+  );
+}
+
+/**
  * Ossature de chargement des créneaux : des pastilles grises pulsées, disposées
  * comme la vraie liste. Un simple spinner ne disait pas « du contenu arrive
  * ici » ; l'ossature en donne la forme et rassure sur ce qui se charge.
@@ -514,6 +594,14 @@ function formatDay(iso: string, timezone: string): string {
     month: "long",
     timeZone: timezone,
   });
+}
+
+/** « Semaine du 21 septembre » — le lundi de la semaine, heure locale du visiteur. */
+function formatWeek(weekStart: Date): string {
+  return `Semaine du ${weekStart.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+  })}`;
 }
 
 function formatHour(iso: string, timezone: string): string {

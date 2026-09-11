@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -5,7 +6,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 import { ActivityControls } from "@/components/activity-controls";
 import { ActivityPaidToggle } from "@/components/activity-paid-toggle";
-import { PageTitle, SectionTitle } from "@/components/editorial";
+import { PageHeader, SectionTitle } from "@/components/editorial";
 import { Badge } from "@/components/ui/badge";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -27,6 +28,8 @@ import {
  * période dans son fuseau, agrégats, heures ouvertes) vit dans
  * `lib/teacher/activity.ts`, pure et testée.
  */
+export const metadata: Metadata = { title: "Activité" };
+
 export default async function ActivitePage({
   searchParams,
 }: {
@@ -204,17 +207,14 @@ export default async function ActivitePage({
     value == null ? "—" : `${Math.round(value * 100)} %`;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
-      <header className="flex flex-col gap-5 border-b border-border pb-8">
-        <div className="flex flex-col gap-2">
-          <PageTitle size="page">Activité</PageTitle>
-          <p className="text-sm text-muted">
-            Vos revenus sur une période — réglés directement par vos élèves, hors
-            plateforme.
-          </p>
-        </div>
-        <ActivityControls instruments={instruments} />
-      </header>
+    <div className="flex flex-col gap-10">
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Activité"
+        lead="Vos revenus sur une période — réglés directement par vos élèves, hors plateforme."
+      />
+      <ActivityControls instruments={instruments} />
 
       {/* Chiffres clés de la période. */}
       <section className="flex flex-col gap-4">
@@ -233,7 +233,9 @@ export default async function ActivitePage({
             hint={
               report.unpaidCount > 0
                 ? `${report.unpaidCount} cours à régler`
-                : "Tout est encaissé"
+                : report.realizedCount > 0
+                  ? "Tout est encaissé"
+                  : undefined
             }
           />
           <StatCell
@@ -442,14 +444,20 @@ function MiniStat({
 
 /**
  * Variation par rapport à la période précédente. Une hausse est verte pour un
- * revenu comme pour un nombre de cours. Pas de repère quand la période
- * précédente était vide : « +∞ % » n'apprend rien.
+ * revenu comme pour un nombre de cours. Pas de repère quand l'une des deux
+ * périodes est vide : « +∞ % » n'apprend rien, et « -100 % » en rouge sur un
+ * mois qui n'a simplement pas commencé sonnait comme une alarme.
  */
 function Trend({ current, previous }: { current: number; previous: number }) {
   if (previous === 0) {
     return current > 0 ? (
       <p className="mt-1 text-xs text-success">Nouveau sur la période</p>
     ) : null;
+  }
+  if (current === 0) {
+    return (
+      <p className="mt-1 text-xs text-subtle">Rien encore sur cette période</p>
+    );
   }
 
   const delta = (current - previous) / previous;

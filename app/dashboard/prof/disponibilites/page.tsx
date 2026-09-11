@@ -1,9 +1,13 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AvailabilityEditor } from "@/components/availability-editor";
+import { PageHeader } from "@/components/editorial";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+
+export const metadata: Metadata = { title: "Disponibilités" };
 
 export default async function TeacherAvailabilityPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -38,15 +42,23 @@ export default async function TeacherAvailabilityPage() {
   ]);
 
   return (
-    <AvailabilityEditor
-      timezone={user.timezone}
-      initialSlots={slots}
-      initialExceptions={exceptions.map((exception) => ({
-        ...exception,
-        // Colonne `@db.Date` : on la relit en UTC pour ne pas décaler d'un jour.
-        date: exception.date.toISOString().slice(0, 10),
-      }))}
-    />
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Disponibilités"
+        lead="Votre semaine type et vos absences : c'est ce qui décide des créneaux proposés aux élèves."
+      />
+      <AvailabilityEditor
+        timezone={user.timezone}
+        initialSlots={slots}
+        initialExceptions={exceptions.map((exception) => ({
+          ...exception,
+          // Colonne `@db.Date` : on la relit en UTC pour ne pas décaler d'un jour.
+          date: exception.date.toISOString().slice(0, 10),
+        }))}
+      />
+    </div>
   );
 }
 

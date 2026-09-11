@@ -9,11 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { postJson, type Failure } from "@/lib/http/failure";
+import { localFailure, postJson, type Failure } from "@/lib/http/failure";
 import { notifySuccess } from "@/lib/toast";
+import { ageOn } from "@/lib/user/age";
 import { cn } from "@/lib/utils";
 
 type Level = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "PROFESSIONAL";
+
+/** Même seuil que `lib/student/profile.ts` : la règle serveur reste la vérité. */
+const MAJORITY_AGE = 18;
 
 const LEVEL_LABELS: Record<Level, string> = {
   BEGINNER: "Débutant",
@@ -37,7 +41,9 @@ export type StudentInstrumentRow = {
   slug: string;
   name: string;
   family: string;
-  level: Level;
+  /** Nul tant que l'élève n'a pas choisi : « Débutant » par défaut aurait
+   * été une réponse que personne n'a donnée. */
+  level: Level | null;
   yearsPracticed: number | null;
   ownsInstrument: boolean;
 };
@@ -85,7 +91,7 @@ export function StudentProfileForm({
             ...profile.instruments,
             {
               ...item,
-              level: "BEGINNER" as Level,
+              level: null,
               yearsPracticed: null,
               ownsInstrument: false,
             },
@@ -105,9 +111,26 @@ export function StudentProfileForm({
   // La tessiture n'a de sens que pour un chanteur.
   const sings = profile.instruments.some((i) => i.family === "VOICE");
 
+  // L'âge est calculé comme côté serveur (minuit UTC de la date civile). Sans
+  // date de naissance, personne n'est présumé mineur : le bloc du responsable
+  // légal n'apparaît que lorsqu'il est réellement requis.
+  const age = profile.birthDate
+    ? ageOn(new Date(`${profile.birthDate}T00:00:00.000Z`), new Date())
+    : null;
+  const minor = age !== null && age < MAJORITY_AGE;
+
   const save = async () => {
-    setIsSaving(true);
     setError(null);
+
+    // Le serveur remplacerait un niveau absent par « Débutant » ; on préfère
+    // demander, en nommant l'instrument concerné.
+    const unset = profile.instruments.find((i) => i.level === null);
+    if (unset) {
+      setError(localFailure(`${unset.name} : choisissez un niveau.`));
+      return;
+    }
+
+    setIsSaving(true);
 
     try {
       const result = await postJson<StudentProfileData>("/api/student/profile", {
@@ -207,14 +230,19 @@ export function StudentProfileForm({
                 <Label htmlFor={`level-${entry.slug}`}>Niveau</Label>
                 <select
                   id={`level-${entry.slug}`}
-                  value={entry.level}
+                  value={entry.level ?? ""}
+                  aria-invalid={entry.level === null}
                   onChange={(e) =>
                     updateInstrument(entry.slug, {
-                      level: e.target.value as Level,
+                      level: (e.target.value || null) as Level | null,
                     })
                   }
-                  className="h-10 rounded-md border border-border bg-white px-3 text-sm"
+                  className={cn(
+                    "h-10 rounded-md border bg-white px-3 text-sm",
+                    entry.level === null ? "border-warning" : "border-border"
+                  )}
                 >
+                  <option value="">Choisir un niveau</option>
                   {Object.entries(LEVEL_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -224,11 +252,13 @@ export function StudentProfileForm({
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor={`years-${entry.slug}`}>Années</Label>
+                <Label htmlFor={`years-${entry.slug}`}>Années de pratique</Label>
                 <Input
                   id={`years-${entry.slug}`}
                   type="number"
                   min={0}
+                  max={80}
+                  placeholder="0"
                   className="w-24"
                   value={entry.yearsPracticed ?? ""}
                   onChange={(e) =>
@@ -310,38 +340,50 @@ export function StudentProfileForm({
               onChange={(e) => set("musicalBackground", e.target.value)}
             />
           </div>
-          <div className="space-y-1">
-            <Label htmlFor="city">Ville</Label>
-            <Input
-              id="city"
-              className="sm:w-64"
-              value={profile.city ?? ""}
-              onChange={(e) => set("city", e.target.value)}
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="city">Ville</Label>
+              <Input
+                id="city"
+                value={profile.city ?? ""}
+                onChange={(e) => set("city", e.target.value)}
+              />
+            </div>
+            {/* La date de naissance vivait sous « Responsable légal » : un
+                adulte se demandait pourquoi on la lui réclamait dans une
+                section qui parle d'un tuteur. Elle ne sert qu'à savoir si ce
+                tuteur est requis. */}
+            <div className="space-y-1">
+              <Label htmlFor="birthDate">Date de naissance</Label>
+              <Input
+                id="birthDate"
+                type="date"
+                value={profile.birthDate ?? ""}
+                onChange={(e) => set("birthDate", e.target.value)}
+              />
+              <p className="text-xs text-subtle">
+                Facultative. Sert uniquement à savoir si un responsable légal
+                doit être joignable.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
+      {/* Le bloc du responsable légal n'apparaît qu'à un mineur ; à défaut de
+          date de naissance, une phrase dit pourquoi on la demande. Le serveur
+          garde la règle (`checkStudentProfile`), l'écran ne fait que ne pas
+          montrer trois champs à un adulte. */}
+      {minor ? (
       <section className="flex flex-col gap-5">
         <div>
           <SectionTitle>Responsable légal</SectionTitle>
           <p className="mt-2 text-sm text-muted">
-            Requis pour un élève mineur : le prof doit pouvoir joindre un
-            adulte.
+            Vous avez {age} ans : le prof doit pouvoir joindre un adulte. Un
+            e-mail ou un téléphone suffit.
           </p>
         </div>
         <div className="flex flex-col gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="birthDate">Date de naissance</Label>
-            <Input
-              id="birthDate"
-              type="date"
-              className="sm:w-48"
-              value={profile.birthDate ?? ""}
-              onChange={(e) => set("birthDate", e.target.value)}
-            />
-          </div>
-
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-1">
               <Label htmlFor="guardianName">Nom</Label>
@@ -364,6 +406,7 @@ export function StudentProfileForm({
               <Label htmlFor="guardianPhone">Téléphone</Label>
               <Input
                 id="guardianPhone"
+                type="tel"
                 value={profile.guardianPhone ?? ""}
                 onChange={(e) => set("guardianPhone", e.target.value)}
               />
@@ -371,6 +414,12 @@ export function StudentProfileForm({
           </div>
         </div>
       </section>
+      ) : age === null ? (
+        <p className="text-sm text-muted">
+          Vous avez moins de 18 ans ? Indiquez votre date de naissance
+          ci-dessus : le prof devra pouvoir joindre un adulte.
+        </p>
+      ) : null}
 
       <FormFailure failure={error} onRetry={save} />
 

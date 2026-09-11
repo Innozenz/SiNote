@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   BadgeCheck,
+  CalendarDays,
   ChevronLeft,
   Globe,
   Home,
@@ -15,6 +16,7 @@ import {
 import { BookingWidget } from "@/components/booking-widget";
 import { Eyebrow, PageTitle, SectionTitle } from "@/components/editorial";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { TeacherReviews } from "@/components/teacher-reviews";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +35,7 @@ import {
 import { summarizeFromCounts } from "@/lib/reviews/summary";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { summarizeOpenings } from "@/lib/teacher/openings-summary";
 import { getPublicTeacher } from "@/lib/teacher/public-profile";
 import { ageOn } from "@/lib/user/age";
 
@@ -139,6 +142,21 @@ export default async function TeacherPublicPage({
       ? null
       : (teacher.hourlyRateCents / 100).toFixed(0);
 
+  // Signaux de confiance : ce que la base sait déjà et que la fiche taisait.
+  // Jamais « 0 cours donnés » — un compteur à zéro n'inspire rien.
+  const lessonsGiven = teacher._count.bookings;
+  const since = (teacher.publishedAt ?? teacher.createdAt).toLocaleDateString(
+    "fr-FR",
+    { month: "long", year: "numeric", timeZone: teacher.user.timezone }
+  );
+  const trust = [
+    lessonsGiven > 0
+      ? `${lessonsGiven} cours donné${lessonsGiven > 1 ? "s" : ""}`
+      : null,
+    `Sur SiNote depuis ${since}`,
+  ].filter(Boolean);
+  const openings = summarizeOpenings(teacher.rules);
+
   const modes = [
     teacher.teachesOnline && { icon: MODE_ICONS.online, label: "En visio" },
     teacher.teachesInPerson && {
@@ -241,9 +259,11 @@ export default async function TeacherPublicPage({
               size="md"
             />
 
-            {age !== null ? (
-              <p className="text-sm text-muted">{age} ans</p>
-            ) : null}
+            <p className="text-sm text-muted">
+              {[age !== null ? `${age} ans` : null, ...trust]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
 
             {teacher.headline ? (
               <p className="text-lg text-muted">
@@ -291,6 +311,15 @@ export default async function TeacherPublicPage({
                 <BadgeCheck className="h-4 w-4 text-subtle" />
                 Cours de {teacher.defaultDurationMin} minutes
               </li>
+              {openings ? (
+                <li className="flex items-start gap-2">
+                  <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-subtle" />
+                  <span>
+                    <span className="text-subtle">Disponible : </span>
+                    {openings}
+                  </span>
+                </li>
+              ) : null}
             </ul>
           </section>
 
@@ -338,6 +367,7 @@ export default async function TeacherPublicPage({
         </aside>
       </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

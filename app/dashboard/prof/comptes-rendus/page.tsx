@@ -1,7 +1,8 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PageTitle } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import { ListFilters } from "@/components/list-filters";
 import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { ReportEditor, type ReportEditorLesson } from "@/components/report-editor";
@@ -23,6 +24,8 @@ import { reportPlainText, sanitizeReportHtml } from "@/lib/reports/sanitize";
  * îlot `ListFilters` que les autres listes : la page reste serveur, l'URL porte
  * l'état.
  */
+export const metadata: Metadata = { title: "Comptes rendus" };
+
 export default async function TeacherReportsPage({
   searchParams,
 }: {
@@ -157,15 +160,14 @@ export default async function TeacherReportsPage({
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <MarkReportsSeen />
-      <header className="flex flex-col gap-2 border-b border-border pb-6">
-        <PageTitle size="page">Comptes rendus</PageTitle>
-        <p className="text-sm text-muted">
-          Documentez chaque cours pour votre élève : ce qui a été travaillé, des
-          images ou partitions, une note audio.
-        </p>
-      </header>
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Comptes rendus"
+        lead="Documentez chaque cours pour votre élève : ce qui a été travaillé, des images ou partitions, une note audio."
+      />
 
       {bookings.length === 0 ? (
         <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">

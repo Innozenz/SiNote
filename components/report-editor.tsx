@@ -583,8 +583,20 @@ function AttachmentTile({
           className="h-28 w-28 rounded-lg border border-border object-cover"
         />
       ) : attachment.kind === "AUDIO" ? (
-        <div className="flex w-64 max-w-full items-center rounded-lg border border-border bg-elevated px-3 py-3">
+        // La corbeille vit dans la rangée du lecteur : posée en absolu sur une
+        // tuile pleine largeur, elle partait à 600 px du lecteur et se lisait
+        // comme « supprimer le compte rendu ».
+        <div className="flex w-full max-w-md items-center gap-2 rounded-lg border border-border bg-elevated px-3 py-3">
           <AudioPlayer src={src} className="min-w-0 flex-1" />
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            aria-label="Supprimer cette note audio"
+            className="shrink-0 rounded-full border border-border bg-elevated p-1.5 text-muted hover:text-danger"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       ) : (
         <a
@@ -597,15 +609,17 @@ function AttachmentTile({
           <span className="line-clamp-2 break-all">{attachment.filename}</span>
         </a>
       )}
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={disabled}
-        aria-label="Supprimer la pièce jointe"
-        className="absolute -right-2 -top-2 rounded-full border border-border bg-elevated p-1 text-muted shadow-sm hover:text-danger"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      {attachment.kind !== "AUDIO" ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={disabled}
+          aria-label="Supprimer la pièce jointe"
+          className="absolute -right-2 -top-2 rounded-full border border-border bg-elevated p-1 text-muted shadow-sm hover:text-danger"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

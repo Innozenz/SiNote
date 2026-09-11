@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight, Check } from "lucide-react";
 
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Spotlight } from "@/components/spotlight";
 
@@ -325,19 +326,8 @@ export default function TeachLandingPage() {
           </Spotlight>
         </section>
 
-        <footer className="border-t border-border py-10">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 text-sm text-muted">
-            <span className="font-display font-bold uppercase tracking-[0.14em] text-foreground">
-              SiNote
-            </span>
-            <nav className="flex gap-4">
-              <Link href="/profs" className="hover:underline">
-                Trouver un prof
-              </Link>
-            </nav>
-          </div>
-        </footer>
       </main>
+      <SiteFooter />
     </>
   );
 }

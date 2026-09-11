@@ -1,7 +1,8 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PageTitle } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import {
   StudentProfileForm,
   type StudentProfileData,
@@ -9,6 +10,8 @@ import {
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { checkStudentProfile } from "@/lib/student/profile";
+
+export const metadata: Metadata = { title: "Mon profil" };
 
 export default async function StudentProfilePage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -62,17 +65,14 @@ export default async function StudentProfilePage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <header className="flex flex-col gap-3 border-b border-border pb-8">
-        <PageTitle size="page">Mon profil</PageTitle>
-        <p className="text-muted">
-          Ces informations sont transmises au prof avec vos demandes de cours.
-        </p>
-      </header>
-
-      <div className="mt-10">
-        <StudentProfileForm initial={initial} catalogue={catalogue} />
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace élève"
+        title="Mon profil"
+        lead="Ces informations sont transmises au prof avec vos demandes de cours."
+      />
+      <StudentProfileForm initial={initial} catalogue={catalogue} />
     </div>
   );
 }

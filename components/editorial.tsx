@@ -75,14 +75,21 @@ export function PageTitle({
 }
 
 /**
- * En-tête de page : œil-de-bœuf, titre démesuré, accroche facultative à gauche ;
- * méta alignée sur la ligne de base à droite (asymétrie). Un filet ferme le bloc
- * — c'est lui, pas une carte, qui structure la page.
+ * En-tête de page : œil-de-bœuf, titre, accroche facultative à gauche ; méta
+ * alignée sur la ligne de base à droite (asymétrie). Un filet ferme le bloc —
+ * c'est lui, pas une carte, qui structure la page.
+ *
+ * **Toute page de l'espace connecté passe par ici, avec `size="page"`.** Onze
+ * pages avaient trois en-têtes différents : titre seul, eyebrow + titre
+ * démesuré, ou rien du tout (la page commençait sur des onglets). L'eyebrow
+ * nomme l'espace (« Espace professeur », « Espace élève », « Administration »),
+ * le titre nomme la page, `lead` dit en une phrase à quoi elle sert.
  */
 export function PageHeader({
   eyebrow,
   title,
   titleClassName,
+  size = "display",
   lead,
   meta,
   className,
@@ -90,6 +97,8 @@ export function PageHeader({
   eyebrow?: React.ReactNode;
   title: React.ReactNode;
   titleClassName?: string;
+  /** `page` pour l'espace connecté, `display` pour les pages publiques. */
+  size?: "display" | "page";
   lead?: React.ReactNode;
   meta?: React.ReactNode;
   className?: string;
@@ -97,13 +106,16 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between",
+        "flex flex-col gap-6 border-b border-border sm:flex-row sm:items-end sm:justify-between",
+        size === "page" ? "pb-6" : "pb-8",
         className
       )}
     >
       <div className="flex flex-col gap-3">
         {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
-        <PageTitle className={titleClassName}>{title}</PageTitle>
+        <PageTitle size={size} className={titleClassName}>
+          {title}
+        </PageTitle>
         {lead ? (
           <p className="max-w-xl text-pretty text-muted">{lead}</p>
         ) : null}

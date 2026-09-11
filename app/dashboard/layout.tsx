@@ -19,9 +19,13 @@ import prisma from "@/lib/prisma";
  * Ce layout porte aussi le shell de tout l'espace : une seule barre latérale
  * (marque, navigation, compte) au lieu d'un en-tête. Elle couvre donc le hub
  * /dashboard comme les sous-espaces prof et élève, dont les layouts ne gardent
- * plus que leur contrôle de rôle. Chaque page se re-plafonne elle-même
- * (formulaires à `max-w-4xl`, agenda pleine largeur) ; le `main` ne pose que le
- * gouttière et la marge verticale.
+ * plus que leur contrôle de rôle.
+ *
+ * **Une seule largeur de contenu, posée ici.** Chaque page se plafonnait
+ * elle-même — 3xl, 4xl, 5xl selon l'écran — et le contenu sautait de gauche à
+ * droite à chaque navigation. Le `main` centre tout à `max-w-5xl` ; les pages
+ * ne posent plus de `mx-auto max-w-*`. L'agenda, qui veut de la place, prend
+ * cette largeur entière.
  */
 export default async function DashboardLayout({
   children,
@@ -146,7 +150,9 @@ export default async function DashboardLayout({
           "/dashboard/messages": messagesUnread,
         }}
       />
-      <main className="min-w-0 flex-1 px-4 py-8 lg:py-10">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:py-10">
+        <div className="mx-auto w-full max-w-5xl">{children}</div>
+      </main>
     </div>
   );
 }

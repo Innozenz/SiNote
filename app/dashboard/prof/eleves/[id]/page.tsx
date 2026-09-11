@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, FileText } from "lucide-react";
 
-import { PageTitle } from "@/components/editorial";
+import { Eyebrow, PageTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
 import { ListFilters } from "@/components/list-filters";
 import { MarkReportsSeen } from "@/components/mark-reports-seen";
@@ -272,7 +272,7 @@ export default async function StudentFilePage({
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+    <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
         <Link
           href="/dashboard/prof/eleves"
@@ -282,12 +282,15 @@ export default async function StudentFilePage({
           Mes élèves
         </Link>
 
+        {/* Même en-tête que les autres pages (eyebrow, titre, filet), avec
+            l'avatar en plus : c'est une fiche, pas une page-liste. */}
         <div className="flex items-center gap-4 border-b border-border pb-6">
           <Avatar className="h-16 w-16 shrink-0 border border-border">
             <AvatarImage src={student.user.image || undefined} alt={name} />
             <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
+            <Eyebrow className="mb-2">Fiche élève</Eyebrow>
             <PageTitle size="page">{name}</PageTitle>
             <p className="mt-1 text-sm text-muted">
               {[

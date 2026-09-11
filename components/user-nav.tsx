@@ -2,15 +2,7 @@
 
 import type { Role } from "@prisma/client";
 import { useRouter } from "next/navigation";
-import {
-  CalendarDays,
-  CreditCard,
-  LogOut,
-  Settings,
-  ShieldCheck,
-  Star,
-  UserCog,
-} from "lucide-react";
+import { LogOut, Settings, ShieldCheck } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -39,9 +31,11 @@ export type NavUser = {
  * l'ancien tableau de bord de démonstration a disparu avec lui, et une
  * application dont on ne peut pas sortir n'est pas une application.
  *
- * Les entrées dépendent du rôle. Auparavant elles pointaient toutes deux vers
- * /dashboard, ce qui donnait un menu où « Abonnement » n'ouvrait pas
- * l'abonnement.
+ * Le menu ne répète pas la barre latérale : « Ma fiche », « Mes avis »,
+ * « Abonnement », « Mes réservations » y figuraient en double, et un menu de
+ * compte qui reprend la navigation cesse d'être un menu de compte. Il ne
+ * garde que ce qui appartient à la personne : son compte, l'administration
+ * si elle en a la capacité, et la sortie.
  *
  * `isAdmin` est **orthogonal** au rôle : un prof ou un élève peut être admin,
  * et voit alors une entrée « Administration » en plus de ses entrées de rôle.
@@ -98,38 +92,11 @@ export function UserNav({
         .toUpperCase()
     : user.email.charAt(0).toUpperCase();
 
-  const byRole =
-    role === "TEACHER"
-      ? [
-          { icon: UserCog, label: "Ma fiche", href: "/dashboard/prof" },
-          { icon: Star, label: "Mes avis", href: "/dashboard/prof/avis" },
-          {
-            icon: CreditCard,
-            label: "Abonnement",
-            href: "/dashboard/prof/abonnement",
-          },
-        ]
-      : role === "STUDENT"
-      ? [
-          {
-            icon: CalendarDays,
-            label: "Mes réservations",
-            href: "/dashboard/cours",
-          },
-          {
-            icon: UserCog,
-            label: "Mon profil",
-            href: "/dashboard/cours/profil",
-          },
-        ]
-      : [];
-
   // L'administration s'ajoute par-dessus le rôle (capacité orthogonale). « Mon
   // compte » n'apparaît qu'avec un rôle marketplace : c'est /dashboard/compte,
   // et l'espace connecté est fermé à un admin sans rôle. Le nom appartient à la
   // personne, pas à sa fiche prof ni à son profil élève.
   const items = [
-    ...byRole,
     ...(isAdmin
       ? [{ icon: ShieldCheck, label: "Administration", href: "/admin/utilisateurs" }]
       : []),

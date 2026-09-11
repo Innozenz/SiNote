@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, Video } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+
+/**
+ * « visio », « en visio », « en ligne », « à distance » tapés dans le champ
+ * Ville : l'ancien placeholder y invitait (« … ou en visio ») et la valeur
+ * partait en filtre `ville`, donc zéro résultat. On la lit comme un mode.
+ */
+const ONLINE_WORDS = /^(en\s+|à\s+)?(visio|visioconf(?:é|e)rence|ligne|distance)$/i;
 
 /**
  * Barre de recherche de la page d'accueil.
@@ -21,6 +30,7 @@ export function HeroSearch({
   const router = useRouter();
   const [instrument, setInstrument] = useState("");
   const [ville, setVille] = useState("");
+  const [online, setOnline] = useState(false);
 
   // Ordre alphabétique pour la liste déroulante, plus facile à parcourir que
   // l'ordre « le plus enseigné d'abord » de la requête.
@@ -29,11 +39,14 @@ export function HeroSearch({
     [instruments]
   );
 
+  // Mêmes paramètres que les filtres de /profs : `instrument`, `ville`, `mode`.
   const submit = () => {
     const params = new URLSearchParams();
     if (instrument) params.set("instrument", instrument);
     const city = ville.trim();
-    if (city) params.set("ville", city);
+    const wantsOnline = online || ONLINE_WORDS.test(city);
+    if (city && !ONLINE_WORDS.test(city)) params.set("ville", city);
+    if (wantsOnline) params.set("mode", "online");
     const qs = params.toString();
     router.push(qs ? `/profs?${qs}` : "/profs");
   };
@@ -70,7 +83,7 @@ export function HeroSearch({
         </div>
       </label>
 
-      <label className="flex flex-[1.2] flex-col justify-center gap-0.5 px-4 py-2.5">
+      <label className="flex flex-[1.2] flex-col justify-center gap-0.5 border-b border-border px-4 py-2.5 sm:border-b-0">
         <span className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-subtle">
           Ville
         </span>
@@ -78,9 +91,27 @@ export function HeroSearch({
           type="text"
           value={ville}
           onChange={(event) => setVille(event.target.value)}
-          placeholder="Lyon, Paris… ou en visio"
+          placeholder="Lyon, Paris…"
           className="w-full bg-transparent text-sm font-medium text-foreground placeholder:font-normal placeholder:text-subtle focus:outline-none"
         />
+      </label>
+
+      {/* Bascule visio : un cours en ligne n'a pas de ville, il fallait un
+          contrôle à lui plutôt qu'un mot à deviner dans le champ Ville. */}
+      <label
+        className={cn(
+          "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2.5 text-sm transition-colors sm:border-b-0 sm:border-l",
+          online ? "text-primary" : "text-muted hover:text-foreground"
+        )}
+      >
+        <input
+          type="checkbox"
+          className="accent-primary h-4 w-4"
+          checked={online}
+          onChange={(event) => setOnline(event.target.checked)}
+        />
+        <Video className="h-4 w-4" aria-hidden />
+        <span className="whitespace-nowrap">En visio</span>
       </label>
 
       <button

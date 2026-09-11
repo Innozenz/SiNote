@@ -11,20 +11,37 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authFailure } from "@/lib/auth-errors";
 import { type Failure } from "@/lib/http/failure";
+import { composeName } from "@/lib/user/name";
 import { LogOut, Loader2, Mail } from "lucide-react";
 
-const authSchema = z.object({
+const signInSchema = z.object({
   email: z.string().email("Adresse email invalide"),
   password: z
     .string()
     .min(8, "Le mot de passe doit contenir au moins 8 caractères"),
 });
 
-type FieldErrors = {
-  email?: string;
-  password?: string;
-  form?: string;
-};
+/**
+ * À l'inscription s'ajoutent le prénom (obligatoire : c'est lui qui signe les
+ * avis et nomme la personne auprès des profs) et le nom, facultatif comme sur
+ * /dashboard/compte. Sans eux, le compte se voyait attribuer la partie locale
+ * de l'adresse e-mail en guise de nom, et « csgosmurf31 » s'affichait partout.
+ */
+const signUpSchema = signInSchema.extend({
+  firstName: z
+    .string()
+    .trim()
+    .min(1, "Le prénom est obligatoire")
+    .max(80, "Le prénom ne peut pas dépasser 80 caractères"),
+  lastName: z
+    .string()
+    .trim()
+    .max(80, "Le nom ne peut pas dépasser 80 caractères"),
+});
+
+type Field = "email" | "password" | "firstName" | "lastName";
+
+type FieldErrors = Partial<Record<Field, string>>;
 
 export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
   const session = authClient.useSession();
@@ -35,6 +52,8 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
   const destination = callbackUrl ?? "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -83,8 +102,8 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
     );
   }
 
-  const validateField = (field: "email" | "password", value: string) => {
-    const result = authSchema.shape[field].safeParse(value);
+  const validateField = (field: Field, value: string) => {
+    const result = signUpSchema.shape[field].safeParse(value);
     setErrors((prev) => ({
       ...prev,
       [field]: result.success ? undefined : result.error.issues[0].message,
@@ -92,11 +111,13 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
   };
 
   const handleEmailAuth = async () => {
-    const result = authSchema.safeParse({ email, password });
+    const result = isSignUp
+      ? signUpSchema.safeParse({ email, password, firstName, lastName })
+      : signInSchema.safeParse({ email, password });
     if (!result.success) {
       const fieldErrors: FieldErrors = {};
       for (const issue of result.error.issues) {
-        const field = issue.path[0] as "email" | "password";
+        const field = issue.path[0] as Field;
         fieldErrors[field] ??= issue.message;
       }
       setErrors(fieldErrors);
@@ -118,8 +139,19 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
         // Vérification d'e-mail obligatoire : l'inscription ne connecte pas
         // encore. En cas de succès, on bascule sur l'écran « vérifiez votre
         // boîte mail » — un lien vient de partir (sendOnSignUp).
+        // `name` est recomposé côté serveur par le hook de création (l'invariant
+        // de `lib/user/name.ts`) ; on l'envoie quand même cohérent, Better Auth
+        // exigeant un `name` à l'inscription.
+        const given = firstName.trim();
+        const family = lastName.trim();
         await authClient.signUp.email(
-          { email, password, name: email.split("@")[0] },
+          {
+            email,
+            password,
+            name: composeName(given, family) ?? given,
+            firstName: given,
+            lastName: family || undefined,
+          },
           {
             onSuccess: () => setVerificationEmail(email),
             onError,
@@ -219,12 +251,52 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // Un vrai `<form>` : Entrée dans le champ mot de passe soumet, et les
+    // gestionnaires de mots de passe reconnaissent la paire identifiant/secret.
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!isLoading) void handleEmailAuth();
+      }}
+    >
+        {isSignUp ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="firstName">Prénom</Label>
+              <Input
+                id="firstName"
+                autoComplete="given-name"
+                value={firstName}
+                maxLength={80}
+                onChange={(e) => setFirstName(e.target.value)}
+                onBlur={(e) => validateField("firstName", e.target.value)}
+                aria-invalid={!!errors.firstName}
+              />
+              {errors.firstName ? (
+                <p className="text-sm text-danger">{errors.firstName}</p>
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="lastName">Nom</Label>
+              <Input
+                id="lastName"
+                autoComplete="family-name"
+                value={lastName}
+                maxLength={80}
+                onChange={(e) => setLastName(e.target.value)}
+                aria-invalid={!!errors.lastName}
+              />
+              <p className="text-xs text-subtle">Facultatif.</p>
+            </div>
+          </div>
+        ) : null}
         <div className="space-y-1">
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
             type="email"
+            autoComplete="email"
             placeholder="nom@exemple.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -240,6 +312,7 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
           <Input
             id="password"
             type="password"
+            autoComplete={isSignUp ? "new-password" : "current-password"}
             placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -251,16 +324,21 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
           ) : null}
         </div>
         <FormFailure failure={failure} />
-        <Button onClick={handleEmailAuth} disabled={isLoading}>
+        <Button type="submit" disabled={isLoading}>
           {isLoading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : null}
           {isSignUp ? "S'inscrire" : "Se connecter"}
         </Button>
         <Button
+          type="button"
           variant="ghost"
           size="sm"
-          onClick={() => setIsSignUp(!isSignUp)}
+          onClick={() => {
+            setIsSignUp(!isSignUp);
+            setErrors({});
+            setFailure(null);
+          }}
         >
           {isSignUp
             ? "Déjà un compte ? Se connecter"
@@ -276,6 +354,6 @@ export function AuthButtons({ callbackUrl }: { callbackUrl?: string | null }) {
             Mot de passe oublié ?
           </Link>
         ) : null}
-    </div>
+    </form>
   );
 }

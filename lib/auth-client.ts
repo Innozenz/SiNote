@@ -1,4 +1,7 @@
+import { inferAdditionalFields } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
+
+import type { auth } from "./auth";
 
 /**
  * Client Better Auth (navigateur).
@@ -13,5 +16,12 @@ import { createAuthClient } from "better-auth/react";
  *
  * `NEXT_PUBLIC_APP_URL` reste utile ailleurs (liens des e-mails, `metadataBase`,
  * URLs Stripe), mais le client d'auth n'en dépend plus.
+ *
+ * `inferAdditionalFields` fait connaître au client les champs `firstName` /
+ * `lastName` déclarés côté serveur, pour que `signUp.email` les accepte. Import
+ * **de type** uniquement : le module serveur (Prisma, secrets) ne doit pas
+ * entrer dans le bundle navigateur.
  */
-export const authClient = createAuthClient();
+export const authClient = createAuthClient({
+  plugins: [inferAdditionalFields<typeof auth>()],
+});

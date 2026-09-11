@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Compass, Search } from "lucide-react";
 
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 
@@ -43,6 +44,7 @@ export default function NotFound() {
           </Button>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

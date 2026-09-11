@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -8,7 +9,6 @@ import {
 } from "@/components/student-bookings";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { sanitizeReportHtml } from "@/lib/reports/sanitize";
 import { MarkCoursSeen } from "./mark-seen";
 
 /**
@@ -19,6 +19,8 @@ import { MarkCoursSeen } from "./mark-seen";
  * appartiennent au prof, et la machine à états le fait déjà respecter côté
  * serveur — cet écran ne fait que ne pas proposer ce qui serait refusé.
  */
+export const metadata: Metadata = { title: "Mes réservations" };
+
 export default async function StudentBookingsPage() {
   const session = await auth.api.getSession({ headers: await headers() });
 
@@ -47,34 +49,17 @@ export default async function StudentBookingsPage() {
       meetingUrl: true,
       address: true,
       cancellationReason: true,
+      // Le compte rendu se lit dans le dossier du prof ; ici on ne dit que
+      // s'il existe et s'il a quelque chose à montrer.
       report: {
         select: {
-          title: true,
           content: true,
-          attachments: {
-            orderBy: { createdAt: "asc" },
-            select: {
-              id: true,
-              filename: true,
-              contentType: true,
-              kind: true,
-              sizeBytes: true,
-            },
-          },
-          comments: {
-            orderBy: { createdAt: "asc" },
-            select: {
-              id: true,
-              sender: true,
-              content: true,
-              createdAt: true,
-            },
-          },
+          _count: { select: { attachments: true, comments: true } },
         },
       },
       instrument: { select: { name: true } },
       teacher: {
-        select: { slug: true, user: { select: { name: true } } },
+        select: { id: true, slug: true, user: { select: { name: true } } },
       },
     },
   });
@@ -93,29 +78,25 @@ export default async function StudentBookingsPage() {
     instrumentName: booking.instrument.name,
     teacherName: booking.teacher.user.name,
     teacherSlug: booking.teacher.slug,
-    report: booking.report
-      ? {
-          title: booking.report.title,
-          content: booking.report.content
-            ? sanitizeReportHtml(booking.report.content)
-            : null,
-          attachments: booking.report.attachments,
-          comments: booking.report.comments.map((c) => ({
-            ...c,
-            createdAt: c.createdAt.toISOString(),
-          })),
-        }
-      : null,
+    teacherId: booking.teacher.id,
+    hasReport: Boolean(
+      booking.report &&
+        (booking.report.content ||
+          booking.report._count.attachments > 0 ||
+          booking.report._count.comments > 0)
+    ),
   }));
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="flex flex-col gap-8">
       <MarkCoursSeen />
-      <PageHeader eyebrow="Espace élève" title="Mes réservations" />
-
-      <div className="mt-10">
-        <StudentBookings initial={rows} timezone={user.timezone} />
-      </div>
+      <PageHeader
+        size="page"
+        eyebrow="Espace élève"
+        title="Mes réservations"
+        lead="Vos demandes en attente, vos cours à venir et l'historique. Les comptes rendus se lisent dans le dossier de chaque prof."
+      />
+      <StudentBookings initial={rows} timezone={user.timezone} />
     </div>
   );
 }

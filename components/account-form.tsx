@@ -75,7 +75,14 @@ export function AccountForm({ initial }: { initial: IdentityData }) {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    // Un vrai `<form>` : Entrée dans un champ enregistre, comme partout ailleurs.
+    <form
+      className="flex flex-col gap-8"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!isSaving) void save();
+      }}
+    >
       <section className="flex flex-col gap-5">
         <div>
           <SectionTitle>Identité</SectionTitle>
@@ -117,7 +124,7 @@ export function AccountForm({ initial }: { initial: IdentityData }) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Adresse e-mail</Label>
-            <Input id="email" value={identity.email} disabled readOnly />
+            <Input id="email" value={identity.email} autoComplete="email" disabled readOnly />
             {/* Dire pourquoi c'est bloqué : un champ grisé sans explication
                 passe pour une fonctionnalité oubliée. */}
             <p className="text-xs text-subtle">
@@ -137,12 +144,12 @@ export function AccountForm({ initial }: { initial: IdentityData }) {
           <span className="text-sm text-subtle">
             Les modifications ne sont enregistrées qu&apos;ici.
           </span>
-          <Button size="lg" disabled={isSaving} onClick={save}>
+          <Button type="submit" size="lg" disabled={isSaving}>
             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Enregistrer
           </Button>
         </div>
       </div>
-    </div>
+    </form>
   );
 }

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -14,6 +15,8 @@ import prisma from "@/lib/prisma";
  * Chaque dossier centralise la relation avec un prof : cours, comptes rendus et
  * échanges. C'est le pendant du roster « Mes élèves » côté prof.
  */
+export const metadata: Metadata = { title: "Mes cours" };
+
 export default async function StudentDossiersPage() {
   const session = await auth.api.getSession({ headers: await headers() });
 
@@ -85,8 +88,13 @@ export default async function StudentDossiersPage() {
     .sort((a, b) => b.lastActivity - a.lastActivity);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Espace élève" title="Mes cours" />
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace élève"
+        title="Mes cours"
+        lead="Un dossier par prof : comptes rendus, historique, messages et votre avis."
+      />
 
       {rows.length === 0 ? (
         <p className="mt-10 text-muted">

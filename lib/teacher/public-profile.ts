@@ -37,7 +37,15 @@ export const getPublicTeacher = cache(async (slug: string) => {
       trialLessonMinutes: true,
       defaultDurationMin: true,
       publishedAt: true,
+      createdAt: true,
       user: { select: { name: true, image: true, timezone: true } },
+      // Signaux de confiance de la fiche : cours réellement donnés, et la
+      // semaine type pour un résumé « disponible lun. soir, jeu. matin ».
+      _count: { select: { bookings: { where: { status: "COMPLETED" } } } },
+      rules: {
+        select: { weekday: true, startMinute: true, endMinute: true },
+        orderBy: [{ weekday: "asc" }, { startMinute: "asc" }],
+      },
       instruments: {
         select: {
           yearsExperience: true,

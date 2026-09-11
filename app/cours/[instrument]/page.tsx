@@ -10,7 +10,9 @@ import {
   LandingFaqSection,
   LandingLinkCloud,
 } from "@/components/landing-sections";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { instrumentInProse } from "@/lib/instruments/prose";
 import { TeacherResultList } from "@/components/teacher-result-list";
 import { Button } from "@/components/ui/button";
 import prisma from "@/lib/prisma";
@@ -83,7 +85,7 @@ export async function generateMetadata({
 
   const { instrument, response } = data;
   const title = `Cours de ${instrument.name} — trouvez votre professeur`;
-  const description = `Prenez des cours de ${instrument.name} avec un prof près de chez vous ou en ligne. Comparez les profs, consultez leurs disponibilités et réservez votre cours en ligne sur SiNote.`;
+  const description = `Prenez des cours de ${instrumentInProse(instrument.name)} avec un prof près de chez vous ou en ligne. Comparez les profs, consultez leurs disponibilités et réservez votre cours en ligne sur SiNote.`;
 
   return {
     title,
@@ -118,7 +120,10 @@ export default async function InstrumentCoursePage({
     { name: `Cours de ${instrument.name}` },
   ];
 
-  const faq = landingFaq(instrument.name);
+  // Dans une phrase, le nom prend la minuscule (« cours de piano ») ; les
+  // sigles (MAO, DJ) la gardent. Titres et fil d'Ariane restent capitalisés.
+  const prose = instrumentInProse(instrument.name);
+  const faq = landingFaq(prose);
 
   return (
     <>
@@ -161,24 +166,24 @@ export default async function InstrumentCoursePage({
             meta={
               <p className="text-sm text-muted">
                 {total > 0
-                  ? `${total} prof${total > 1 ? "s" : ""} de ${instrument.name}`
+                  ? `${total} prof${total > 1 ? "s" : ""} de ${prose}`
                   : "Bientôt des profs"}
               </p>
             }
           />
 
           <p className="max-w-3xl text-lg text-muted">
-            {instrumentIntro(instrument.name, instrument.family)}
+            {instrumentIntro(prose, instrument.family)}
           </p>
 
           <div className="flex flex-wrap gap-3">
             <Button asChild>
               <Link href={`/profs?instrument=${slug}`}>
-                Voir tous les profs de {instrument.name}
+                Voir tous les profs de {prose}
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/enseigner">Enseigner le {instrument.name}</Link>
+              <Link href="/enseigner">Enseigner : {instrument.name}</Link>
             </Button>
           </div>
         </div>
@@ -204,7 +209,7 @@ export default async function InstrumentCoursePage({
         ) : (
           <section className="flex flex-col items-start gap-4 border-y border-border py-10">
             <p className="text-muted">
-              Aucun professeur de {instrument.name} n&apos;est encore inscrit.
+              Aucun professeur de {prose} n&apos;est encore inscrit.
               Revenez bientôt — ou ouvrez votre fiche si vous enseignez.
             </p>
             <Button asChild>
@@ -214,8 +219,8 @@ export default async function InstrumentCoursePage({
         )}
 
         <section className="flex max-w-3xl flex-col gap-4">
-          <SectionTitle>{whyLearnTitle(instrument.name)}</SectionTitle>
-          <p className="text-muted">{whyLearn(instrument.name, instrument.family)}</p>
+          <SectionTitle>{whyLearnTitle(prose)}</SectionTitle>
+          <p className="text-muted">{whyLearn(prose, instrument.family)}</p>
         </section>
 
         {cities.length > 0 ? (
@@ -245,13 +250,14 @@ export default async function InstrumentCoursePage({
           <Eyebrow>Vous enseignez ?</Eyebrow>
           <p className="max-w-2xl text-lg text-muted">
             Créez votre fiche, fixez vos tarifs et recevez des demandes de cours
-            de {instrument.name}. Sans commission sur vos cours.
+            de {prose}. Sans commission sur vos cours.
           </p>
           <Button asChild>
             <Link href="/enseigner">Devenir professeur</Link>
           </Button>
         </section>
       </main>
+      <SiteFooter />
     </>
   );
 }

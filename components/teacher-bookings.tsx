@@ -22,6 +22,7 @@ import {
 } from "@/components/student-profile-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatPrice } from "@/lib/format/price";
 import { postJson } from "@/lib/http/failure";
 import { groupBookings, isUrgent } from "@/lib/bookings/grouping";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
@@ -86,6 +88,52 @@ type Enriched = Omit<BookingRow, "startsAt" | "endsAt"> & {
   endsAt: Date;
 };
 
+/**
+ * Actions irréversibles, confirmées avant d'être envoyées. Le motif de refus
+ * ou d'annulation est transmis à l'élève (`cancellationReason`) ; l'absence
+ * n'en a pas.
+ */
+const DESTRUCTIVE: Partial<
+  Record<
+    Action,
+    { title: string; description: string; confirm: string; reason?: string }
+  >
+> = {
+  decline: {
+    title: "Refuser cette demande ?",
+    description:
+      "Le créneau redevient réservable et l'élève est prévenu. Cette décision est définitive.",
+    confirm: "Refuser la demande",
+    reason: "Motif (facultatif, transmis à l'élève)",
+  },
+  cancel: {
+    title: "Annuler ce cours ?",
+    description:
+      "Le cours est retiré de l'agenda et l'élève est prévenu. Cette décision est définitive.",
+    confirm: "Annuler le cours",
+    reason: "Motif (facultatif, transmis à l'élève)",
+  },
+  no_show: {
+    title: "Marquer l'élève absent ?",
+    description:
+      "Le cours est clos comme non honoré : il ne compte pas dans vos cours donnés et l'élève ne pourra pas laisser d'avis.",
+    confirm: "Élève absent",
+  },
+};
+
+/** Couleur du badge d'état — les mêmes teintes que la légende de l'agenda. */
+const STATUS_VARIANTS: Record<
+  BookingRow["status"],
+  "success" | "warning" | "destructive" | "secondary"
+> = {
+  PENDING: "warning",
+  CONFIRMED: "success",
+  COMPLETED: "success",
+  NO_SHOW: "destructive",
+  CANCELLED: "secondary",
+  DECLINED: "secondary",
+};
+
 const MODE_LABELS: Record<BookingRow["mode"], string> = {
   ONLINE: "Visio",
   TEACHER_PLACE: "Chez vous",
@@ -110,6 +158,10 @@ export function TeacherBookings({
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Action irréversible en attente de confirmation.
+  const [pending, setPending] = useState<{ id: string; action: Action } | null>(
+    null
+  );
   // Onglet affiché ; « en attente » par défaut, c'est là que se trouve l'action.
   const [tab, setTab] = useState<BookingTab>("pending");
   // Demande dont la modale « profil de l'élève » est ouverte.
@@ -132,18 +184,25 @@ export function TeacherBookings({
     [rows, now]
   );
 
-  const act = async (id: string, action: Action) => {
+  const act = async (
+    id: string,
+    action: Action,
+    reason?: string
+  ): Promise<boolean> => {
     setBusyId(id);
 
     try {
       const result = await postJson<{ status: BookingRow["status"] }>(
         `/api/bookings/${id}`,
-        { method: "PATCH", body: JSON.stringify({ action }) }
+        {
+          method: "PATCH",
+          body: JSON.stringify(reason ? { action, reason } : { action }),
+        }
       );
 
       if (!result.ok) {
-        notifyFailure(result.failure, { onRetry: () => act(id, action) });
-        return;
+        notifyFailure(result.failure, { onRetry: () => act(id, action, reason) });
+        return false;
       }
 
       setRows((current) =>
@@ -152,9 +211,17 @@ export function TeacherBookings({
         )
       );
       notifySuccess(ACTION_SUCCESS[action]);
+      return true;
     } finally {
       setBusyId(null);
     }
+  };
+
+  // Refuser, annuler et marquer absent passent par une confirmation ; le reste
+  // part directement.
+  const request = (id: string, action: Action) => {
+    if (DESTRUCTIVE[action]) setPending({ id, action });
+    else void act(id, action);
   };
 
   // Toujours dans le fuseau du prof : c'est son agenda qu'il consulte, pas
@@ -192,9 +259,7 @@ export function TeacherBookings({
             </p>
             <p className="text-sm text-muted">
               {format(row.startsAt)} · {MODE_LABELS[row.mode]}
-              {row.priceCents !== null
-                ? ` · ${(row.priceCents / 100).toFixed(2)} €`
-                : ""}
+              {row.priceCents !== null ? ` · ${formatPrice(row.priceCents)}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -211,7 +276,9 @@ export function TeacherBookings({
               </Badge>
             ) : null}
             {row.status !== "PENDING" && row.status !== "CONFIRMED" ? (
-              <Badge variant="secondary">{STATUS_LABELS[row.status]}</Badge>
+              <Badge variant={STATUS_VARIANTS[row.status]}>
+                {STATUS_LABELS[row.status]}
+              </Badge>
             ) : null}
           </div>
         </div>
@@ -244,7 +311,7 @@ export function TeacherBookings({
                 size="sm"
                 variant={variant as "default"}
                 disabled={busyId === row.id}
-                onClick={() => act(row.id, action)}
+                onClick={() => request(row.id, action)}
               >
                 {busyId === row.id ? (
                   <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -267,8 +334,31 @@ export function TeacherBookings({
     { key: "past", label: "Historique" },
   ];
 
+  const pendingSpec = pending ? DESTRUCTIVE[pending.action] : undefined;
+
   return (
     <div className="flex flex-col gap-6">
+      {pending && pendingSpec ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPending(null);
+          }}
+          title={pendingSpec.title}
+          description={pendingSpec.description}
+          confirmLabel={pendingSpec.confirm}
+          destructive
+          busy={busyId === pending.id}
+          reason={
+            pendingSpec.reason ? { label: pendingSpec.reason } : undefined
+          }
+          onConfirm={async (reason) => {
+            const ok = await act(pending.id, pending.action, reason || undefined);
+            if (ok) setPending(null);
+          }}
+        />
+      ) : null}
+
       {/* Onglets : chaque section (en attente, à venir, à clôturer, historique)
           sur son propre onglet plutôt qu'empilées. État client local — la boîte
           garde ses mises à jour optimistes, inutile de passer par l'URL. */}

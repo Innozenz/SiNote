@@ -1,7 +1,8 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PageTitle } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import {
   TeacherReviewReplies,
   type TeacherReviewRow,
@@ -20,6 +21,8 @@ import { givenName } from "@/lib/user/name";
  * le profil de la session : aucun identifiant de prof n'est accepté en
  * paramètre, donc aucune fiche d'autrui n'est atteignable par erreur.
  */
+export const metadata: Metadata = { title: "Avis reçus" };
+
 export default async function TeacherReviewsPage() {
   const session = await auth.api.getSession({ headers: await headers() });
 
@@ -81,29 +84,28 @@ export default async function TeacherReviewsPage() {
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-8">
-        <div className="flex flex-col gap-2">
-          <PageTitle size="page">Avis</PageTitle>
-          <p className="text-sm text-muted">
-            Écrits par des élèves ayant suivi un cours que vous avez clôturé.
-          </p>
-        </div>
-
-        {summary.average !== null ? (
-          <div className="flex items-center gap-3">
-            <span className="font-display text-3xl font-semibold">
-              {formatAverage(summary.average)}
-            </span>
-            <div className="flex flex-col">
-              <Stars value={summary.average} />
-              <span className="text-xs text-subtle">
-                {`${summary.count} avis`}
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Avis"
+        lead="Écrits par des élèves ayant suivi un cours que vous avez clôturé. Vous pouvez y répondre publiquement."
+        meta={
+          summary.average !== null ? (
+            <div className="flex items-center gap-3 sm:justify-end">
+              <span className="font-display text-3xl font-semibold">
+                {formatAverage(summary.average)}
               </span>
+              <div className="flex flex-col">
+                <Stars value={summary.average} />
+                <span className="text-xs text-subtle">
+                  {`${summary.count} avis`}
+                </span>
+              </div>
             </div>
-          </div>
-        ) : null}
-      </header>
+          ) : null
+        }
+      />
 
       <TeacherReviewReplies initial={rows} timezone={teacher.user.timezone} />
     </div>

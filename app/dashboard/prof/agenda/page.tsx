@@ -1,7 +1,9 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { type AgendaNav } from "@/components/agenda-view-switch";
+import { PageHeader } from "@/components/editorial";
 import {
   TeacherAgenda,
   type AgendaRow,
@@ -11,6 +13,7 @@ import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { isMinor } from "@/lib/student/profile";
 import { ageOn } from "@/lib/user/age";
+import { dayOpenings } from "@/lib/availability";
 import { addDays, civilDateKeyInZone } from "@/lib/availability/zone";
 import {
   buildMonthAgenda,
@@ -29,6 +32,20 @@ import {
  * Rendu à la demande et non mis en cache : un cours confirmé il y a dix
  * secondes doit apparaître.
  */
+export const metadata: Metadata = { title: "Agenda" };
+
+/** En-tête commun aux trois vues : le calendrier vit dessous, dans sa carte. */
+function AgendaHeader() {
+  return (
+    <PageHeader
+      size="page"
+      eyebrow="Espace professeur"
+      title="Agenda"
+      lead="Vos cours posés sur vos ouvertures : l'espace blanc entre deux cours est réservable."
+    />
+  );
+}
+
 export default async function TeacherAgendaPage({
   searchParams,
 }: {
@@ -72,28 +89,59 @@ export default async function TeacherAgendaPage({
   const currentMonth = todayKey.slice(0, 7);
 
   // Vue mois : aperçu en lecture seule, avec sa propre requête et son propre
-  // rendu — le mois ne dessine pas le fond de disponibilité, donc ni règles ni
-  // exceptions à charger.
+  // rendu. Elle ne dessine pas les plages heure par heure, mais elle grise les
+  // jours sans aucune ouverture — même information que la semaine, en gros.
   if (view === "mois") {
     const month = isMonth(params.mois) ? params.mois : currentMonth;
     const range = monthRange(month, timezone);
+    const firstKey = `${month}-01`;
+    const lastKey = addDays(shiftMonthKey(month, 1) + "-01", -1);
 
-    const bookings = await prisma.booking.findMany({
-      where: {
-        teacherId: user.teacherProfile.id,
-        status: { in: ["PENDING", "CONFIRMED", "COMPLETED", "NO_SHOW"] },
-        startsAt: { gte: range.from, lt: range.to },
-      },
-      orderBy: { startsAt: "asc" },
-      select: {
-        id: true,
-        status: true,
-        startsAt: true,
-        endsAt: true,
-        instrument: { select: { name: true } },
-        student: { select: { user: { select: { name: true } } } },
-      },
-    });
+    const [bookings, monthRules, monthExceptions] = await Promise.all([
+      prisma.booking.findMany({
+        where: {
+          teacherId: user.teacherProfile.id,
+          status: { in: ["PENDING", "CONFIRMED", "COMPLETED", "NO_SHOW"] },
+          startsAt: { gte: range.from, lt: range.to },
+        },
+        orderBy: { startsAt: "asc" },
+        select: {
+          id: true,
+          status: true,
+          startsAt: true,
+          endsAt: true,
+          instrument: { select: { name: true } },
+          student: { select: { user: { select: { name: true } } } },
+        },
+      }),
+      prisma.availabilityRule.findMany({
+        where: { teacherId: user.teacherProfile.id },
+        select: {
+          weekday: true,
+          startMinute: true,
+          endMinute: true,
+          validFrom: true,
+          validUntil: true,
+        },
+      }),
+      prisma.availabilityException.findMany({
+        where: {
+          teacherId: user.teacherProfile.id,
+          date: { gte: civilDate(firstKey), lte: civilDate(lastKey) },
+        },
+        select: { date: true, type: true, startMinute: true, endMinute: true },
+      }),
+    ]);
+
+    // Jours du mois qui ont au moins une ouverture, par la même fonction que
+    // le moteur de créneaux — le mois ne peut pas dire « ouvert » là où la
+    // semaine dirait « fermé ».
+    const openDays: string[] = [];
+    for (let key = firstKey; key <= lastKey; key = addDays(key, 1)) {
+      if (dayOpenings(key, monthRules, monthExceptions).open.length > 0) {
+        openDays.push(key);
+      }
+    }
 
     const monthAgenda = buildMonthAgenda<MonthLesson>({
       timezone,
@@ -122,7 +170,12 @@ export default async function TeacherAgendaPage({
       monthHref: `${AGENDA}?vue=mois&mois=${month}`,
     };
 
-    return <TeacherMonth agenda={monthAgenda} nav={monthNav} />;
+    return (
+      <div className="flex flex-col gap-8">
+        <AgendaHeader />
+        <TeacherMonth agenda={monthAgenda} nav={monthNav} openDays={openDays} />
+      </div>
+    );
   }
 
   // `weekStart` désigne le premier jour affiché : le lundi en vue semaine, le
@@ -288,7 +341,9 @@ export default async function TeacherAgendaPage({
   });
 
   return (
-    <TeacherAgenda
+    <div className="flex flex-col gap-8">
+      <AgendaHeader />
+      <TeacherAgenda
       rows={rows}
       rules={rules.map((rule) => ({
         ...rule,
@@ -307,7 +362,8 @@ export default async function TeacherAgendaPage({
       timezone={timezone}
       granularityMin={user.teacherProfile.slotGranularityMin}
       nav={nav}
-    />
+      />
+    </div>
   );
 }
 

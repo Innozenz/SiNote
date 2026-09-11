@@ -6,6 +6,7 @@ import { ArrowUpRight, MapPin } from "lucide-react";
 
 import { FamilyIcon } from "@/components/family-icon";
 import { HeroSearch } from "@/components/hero-search";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Spotlight } from "@/components/spotlight";
 import prisma from "@/lib/prisma";
@@ -138,7 +139,7 @@ const reveal = (index: number): CSSProperties =>
 export default async function HomePage() {
   const where = visibleTeacherWhere(new Date());
 
-  const [instruments, cities, teacherCount, featuredResp] = await Promise.all([
+  const [instruments, catalogue, cities, teacherCount, featuredResp] = await Promise.all([
     // Instruments effectivement enseignés, les plus représentés d'abord. La
     // limite dépasse le catalogue : le compteur affiché serait faux si la
     // requête tronquait.
@@ -151,6 +152,15 @@ export default async function HomePage() {
         _count: { select: { teachers: true } },
       },
       orderBy: { teachers: { _count: "desc" } },
+      take: 60,
+    }),
+    // Le catalogue entier, pour le répertoire : chaque discipline a sa page
+    // /cours/* (avec FAQ), qui doit rester atteignable même quand aucun prof
+    // ne l'enseigne encore. Sans ça, une plateforme sans prof visible n'avait
+    // plus un seul lien d'instrument sur sa page d'accueil.
+    prisma.instrument.findMany({
+      select: { slug: true, name: true, family: true },
+      orderBy: { name: "asc" },
       take: 60,
     }),
     prisma.teacherProfile.groupBy({
@@ -182,14 +192,20 @@ export default async function HomePage() {
     cities.length > 0 ? count(cities.length, "ville") : null,
   ].filter(Boolean);
 
-  // Répertoire crawlable : les instruments groupés par famille, chacun pointant
-  // vers sa page de cours (`/cours/[slug]`). C'est le maillage interne qui fait
-  // découvrir et remonter ces pages — sans lui, elles ne vivraient que dans le
-  // sitemap. On ne liste que les familles réellement enseignées.
+  // Répertoire crawlable : le catalogue groupé par famille, chaque discipline
+  // pointant vers sa page de cours (`/cours/[slug]`). C'est le maillage interne
+  // qui fait découvrir et remonter ces pages — sans lui, elles ne vivraient que
+  // dans le sitemap. Les disciplines réellement enseignées sont marquées, les
+  // autres restent listées : la page /cours/* existe et répond honnêtement.
+  const taught = new Set(instruments.map((item) => item.slug));
   const repertoire = FAMILY_ORDER.map((family) => ({
     family,
-    items: instruments.filter((item) => item.family === family),
+    items: catalogue.filter((item) => item.family === family),
   })).filter((group) => group.items.length > 0);
+
+  // Le sélecteur de l'accroche propose les disciplines enseignées ; à défaut,
+  // le catalogue entier — un sélecteur vide n'est pas une page d'accueil.
+  const searchable = instruments.length > 0 ? instruments : catalogue;
 
   return (
     <>
@@ -266,7 +282,7 @@ export default async function HomePage() {
 
               <div className="mt-6">
                 <HeroSearch
-                  instruments={instruments.map((item) => ({
+                  instruments={searchable.map((item) => ({
                     slug: item.slug,
                     name: item.name,
                   }))}
@@ -442,7 +458,12 @@ export default async function HomePage() {
                         <Link
                           key={item.slug}
                           href={`/cours/${item.slug}`}
-                          className="text-sm text-muted underline-offset-4 transition-colors hover:text-primary hover:underline"
+                          className={cn(
+                            "text-sm underline-offset-4 transition-colors hover:text-primary hover:underline",
+                            taught.has(item.slug)
+                              ? "font-medium text-foreground"
+                              : "text-muted"
+                          )}
                         >
                           {item.name}
                         </Link>
@@ -488,11 +509,13 @@ export default async function HomePage() {
               <SectionHead>Comment ça marche</SectionHead>
             </div>
 
-            <ol className="mt-10 grid gap-px overflow-hidden rounded-[var(--radius)] border border-border bg-border sm:grid-cols-3">
+            {/* Filets, pas de boîte : un trait au-dessus et au-dessous, une
+                barre de mesure entre les trois temps. */}
+            <ol className="mt-10 grid border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-border">
               {STEPS.map((step, index) => (
                 <li
                   key={step.title}
-                  className="m-reveal bg-background p-7"
+                  className="m-reveal border-b border-border py-7 sm:border-b-0 sm:px-7 sm:first:pl-0 sm:last:pr-0"
                   style={reveal(index)}
                 >
                   <span
@@ -579,22 +602,8 @@ export default async function HomePage() {
           </Spotlight>
         </section>
 
-        <footer className="border-t border-border py-10">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 text-sm text-muted">
-            <span className="font-display font-bold uppercase tracking-[0.14em] text-foreground">
-              SiNote
-            </span>
-            {/* Pas de lien de connexion ici : l'en-tête l'affiche déjà, et
-                selon l'état de session. Le dupliquer proposerait « Se
-                connecter » à quelqu'un qui l'est déjà. */}
-            <nav className="flex gap-4">
-              <Link href="/profs" className="hover:underline">
-                Trouver un prof
-              </Link>
-            </nav>
-          </div>
-        </footer>
       </main>
+      <SiteFooter />
     </>
   );
 }

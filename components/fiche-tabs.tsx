@@ -2,10 +2,22 @@ import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
-export type FicheTab = { key: string; label: string; badge?: number };
+export type FicheTab = {
+  key: string;
+  label: string;
+  /** Total d'éléments sous l'onglet — un repère, pas une alerte. */
+  badge?: number;
+  /** Éléments non lus : la seule pastille pleine, réservée à ce qui attend. */
+  unread?: number;
+};
 
 /**
  * Barre d'onglets d'une fiche / d'un dossier.
+ *
+ * Deux compteurs, deux rendus. Le total (« Historique 10 ») est écrit en
+ * texte discret ; il ressemblait à une pastille de notification alors que la
+ * barre latérale réserve ce dessin aux non-lus, et « Messages 13 » se lisait
+ * comme treize messages à lire. Seul `unread` prend la pastille pleine.
  *
  * L'onglet actif vit dans l'URL (`?onglet=…`) : le rendu reste côté serveur,
  * l'état est partageable et le bouton retour se comporte bien — même logique que
@@ -41,8 +53,13 @@ export function FicheTabs({
           >
             {tab.label}
             {tab.badge ? (
-              <span className="rounded-full bg-surface-strong px-1.5 text-xs font-semibold text-muted">
+              <span className="text-xs font-normal tabular-nums text-subtle">
                 {tab.badge}
+              </span>
+            ) : null}
+            {tab.unread ? (
+              <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
+                {tab.unread}
               </span>
             ) : null}
           </Link>

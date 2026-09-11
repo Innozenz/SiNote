@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { PageHeader } from "@/components/editorial";
 import { SearchFilters } from "@/components/search-filters";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { TeacherResultList } from "@/components/teacher-result-list";
 import { Button } from "@/components/ui/button";
@@ -213,6 +214,7 @@ export default async function SearchPage({
         </nav>
       ) : null}
       </main>
+      <SiteFooter />
     </>
   );
 }

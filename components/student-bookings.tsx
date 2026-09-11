@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CalendarX,
+  FileText,
   Loader2,
   MapPin,
   Search,
@@ -13,7 +14,8 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ReportViewer, type ReportView } from "@/components/report-view";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatPrice } from "@/lib/format/price";
 import { postJson } from "@/lib/http/failure";
 import { groupBookings } from "@/lib/bookings/grouping";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
@@ -39,8 +41,10 @@ export type StudentBookingRow = {
   instrumentName: string;
   teacherName: string | null;
   teacherSlug: string;
-  /** Compte rendu rédigé par le prof, s'il existe. */
-  report: ReportView | null;
+  teacherId: string;
+  /** Un compte rendu existe et a quelque chose à montrer (texte, pièce jointe
+   * ou échange). Il se lit dans le dossier du prof, pas ici. */
+  hasReport: boolean;
 };
 
 type Enriched = Omit<StudentBookingRow, "startsAt" | "endsAt"> & {
@@ -66,6 +70,19 @@ const STATUS_LABELS: Record<StudentBookingRow["status"], string> = {
   DECLINED: "Refusé",
 };
 
+/** Mêmes teintes que l'agenda : vert pour ce qui a eu lieu, rouge pour l'absence. */
+const STATUS_VARIANTS: Record<
+  StudentBookingRow["status"],
+  "success" | "warning" | "destructive" | "secondary"
+> = {
+  PENDING: "warning",
+  CONFIRMED: "success",
+  COMPLETED: "success",
+  NO_SHOW: "destructive",
+  CANCELLED: "secondary",
+  DECLINED: "secondary",
+};
+
 export function StudentBookings({
   initial,
   timezone,
@@ -75,6 +92,8 @@ export function StudentBookings({
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Cours dont l'annulation attend confirmation.
+  const [pendingCancel, setPendingCancel] = useState<Enriched | null>(null);
   // Onglet affiché ; « À venir » par défaut, l'écran le plus consulté.
   const [tab, setTab] = useState<BookingTab>("upcoming");
 
@@ -95,7 +114,7 @@ export function StudentBookings({
     [rows, now]
   );
 
-  const cancel = async (id: string) => {
+  const cancel = async (id: string, reason?: string): Promise<boolean> => {
     setBusyId(id);
 
     try {
@@ -104,12 +123,14 @@ export function StudentBookings({
         lateCancellation?: boolean;
       }>(`/api/bookings/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ action: "cancel" }),
+        body: JSON.stringify(
+          reason ? { action: "cancel", reason } : { action: "cancel" }
+        ),
       });
 
       if (!result.ok) {
-        notifyFailure(result.failure, { onRetry: () => cancel(id) });
-        return;
+        notifyFailure(result.failure, { onRetry: () => cancel(id, reason) });
+        return false;
       }
 
       setRows((current) =>
@@ -129,6 +150,7 @@ export function StudentBookings({
       } else {
         notifySuccess("Cours annulé.");
       }
+      return true;
     } finally {
       setBusyId(null);
     }
@@ -168,10 +190,9 @@ export function StudentBookings({
             {row.instrumentName}
           </p>
           <p className="text-sm text-muted">
-            {format(row.startsAt)} · {MODE_LABELS[row.mode]}
-            {row.priceCents !== null
-              ? ` · ${(row.priceCents / 100).toFixed(2)} €`
-              : ""}
+            <span className="first-letter:uppercase">{format(row.startsAt)}</span>
+            {` · ${MODE_LABELS[row.mode]}`}
+            {row.priceCents !== null ? ` · ${formatPrice(row.priceCents)}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -181,9 +202,7 @@ export function StudentBookings({
               Essai
             </Badge>
           ) : null}
-          <Badge
-            variant={row.status === "CONFIRMED" ? "success" : "secondary"}
-          >
+          <Badge variant={STATUS_VARIANTS[row.status]}>
             {STATUS_LABELS[row.status]}
           </Badge>
         </div>
@@ -216,19 +235,18 @@ export function StudentBookings({
         </p>
       ) : null}
 
-      {row.report &&
-      (row.report.content ||
-        row.report.attachments.length > 0 ||
-        row.report.comments.length > 0) ? (
-        <div className="rounded-md bg-surface p-3">
-          <p className="mb-3 text-xs font-medium uppercase tracking-wide text-subtle">
-            Compte rendu
-          </p>
-          {row.report.title ? (
-            <p className="mb-2 font-medium">{row.report.title}</p>
-          ) : null}
-          <ReportViewer bookingId={row.id} report={row.report} me="STUDENT" />
-        </div>
+      {/* Le compte rendu complet (texte, pièces jointes, échanges) vivait
+          ici, avec son composeur de messages, dans chaque carte de
+          l'historique — dix cours, dix formulaires. Une ligne suffit : le
+          dossier du prof est l'endroit où on le lit et où on y répond. */}
+      {row.hasReport ? (
+        <Link
+          href={`/dashboard/dossiers/${row.teacherId}?onglet=comptes-rendus#cr-${row.id}`}
+          className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Voir le compte rendu
+        </Link>
       ) : null}
 
       {canCancel(row) ? (
@@ -237,7 +255,7 @@ export function StudentBookings({
             variant="outline"
             size="sm"
             disabled={busyId === row.id}
-            onClick={() => cancel(row.id)}
+            onClick={() => setPendingCancel(row)}
           >
             {busyId === row.id ? (
               <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -270,12 +288,34 @@ export function StudentBookings({
   const tabs: { key: BookingTab; label: string; badge?: number }[] = [
     { key: "pending", label: "En attente", badge: groups.pending.length },
     { key: "upcoming", label: "À venir" },
-    { key: "toReview", label: "Passés" },
+    { key: "toReview", label: "En attente de clôture" },
     { key: "past", label: "Historique" },
   ];
 
   return (
     <div className="flex flex-col gap-6">
+      {pendingCancel ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPendingCancel(null);
+          }}
+          title="Annuler ce cours ?"
+          description={`${format(pendingCancel.startsAt)} avec ${pendingCancel.teacherName ?? "votre prof"}. Le créneau est libéré et le prof est prévenu. Si le cours est proche, prévenez-le aussi directement.`}
+          confirmLabel="Annuler le cours"
+          destructive
+          busy={busyId === pendingCancel.id}
+          reason={{
+            label: "Un mot pour le prof (facultatif)",
+            placeholder: "Empêchement, maladie, changement d'horaire…",
+          }}
+          onConfirm={async (reason) => {
+            const ok = await cancel(pendingCancel.id, reason || undefined);
+            if (ok) setPendingCancel(null);
+          }}
+        />
+      ) : null}
+
       {/* Onglets : chaque état sur son propre onglet plutôt qu'empilés. État
           client local — la page garde ses mises à jour optimistes. L'avis est
           désormais global au prof et se donne depuis « Mes cours ». */}

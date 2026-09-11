@@ -53,11 +53,15 @@ const MAX_CHIPS = 3;
 export function TeacherMonth({
   agenda,
   nav,
+  openDays = [],
 }: {
   agenda: MonthAgenda<MonthLesson>;
   nav: AgendaNav;
+  /** Clés civiles des jours qui ont au moins une ouverture. */
+  openDays?: string[];
 }) {
   const cells = agenda.weeks.flat();
+  const open = new Set(openDays);
   const total = cells
     .filter((cell) => cell.inMonth)
     .reduce((sum, cell) => sum + cell.events.length, 0);
@@ -129,8 +133,19 @@ export function TeacherMonth({
                       href={`/dashboard/prof/agenda?vue=jour&date=${cell.date}`}
                       className={cn(
                         "flex min-h-[5.5rem] flex-col gap-1 p-1.5 transition-colors hover:bg-surface",
-                        cell.inMonth ? "bg-background" : "bg-surface/50"
+                        // Même code que la semaine : papier = ouvert, gris
+                        // soutenu = aucune ouverture ce jour-là.
+                        !cell.inMonth
+                          ? "bg-surface/50"
+                          : open.has(cell.date)
+                            ? "bg-background"
+                            : "bg-surface-strong"
                       )}
+                      title={
+                        cell.inMonth && !open.has(cell.date)
+                          ? "Aucune ouverture ce jour-là"
+                          : undefined
+                      }
                     >
                       <span
                         className={cn(

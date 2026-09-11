@@ -7,6 +7,7 @@ import {
 } from "./notifications/account";
 import { sendNotification } from "./notifications/send";
 import prisma from "./prisma";
+import { composeName } from "./user/name";
 
 /** Validité du lien de réinitialisation. */
 const RESET_TOKEN_MINUTES = 60;
@@ -56,6 +57,46 @@ export const auth = betterAuth({
     // localhost (+ sa variante www, inoffensive). Si aucune n'est définie, on
     // laisse Better Auth sur son défaut plutôt que d'imposer une liste vide.
     ...(trustedOrigins.length > 0 ? { trustedOrigins } : {}),
+    /**
+     * Prénom et nom, saisis à l'inscription.
+     *
+     * Sans ces champs, `signUp.email` ne peut porter que `name`, et l'écran
+     * d'inscription en était réduit à deviner un nom depuis l'adresse — d'où
+     * des comptes appelés « csgosmurf31 » partout. Les colonnes existent déjà
+     * (`User.firstName` / `lastName`) ; on ne fait que les déclarer à Better
+     * Auth pour qu'il accepte de les écrire. `input: true` est indispensable :
+     * c'est ce qui autorise le client à les fournir.
+     */
+    user: {
+        additionalFields: {
+            firstName: { type: "string", required: false, input: true },
+            lastName: { type: "string", required: false, input: true },
+        },
+    },
+    /**
+     * Invariant du modèle (`lib/user/name.ts`) : toute écriture de la paire
+     * prénom/nom recompose `name` dans la même requête. L'inscription passe
+     * par Better Auth et non par `/api/user/identity`, donc l'invariant est
+     * tenu ici, au plus près de l'écriture — un client qui enverrait la paire
+     * sans `name` cohérent ne peut pas créer deux vérités.
+     */
+    databaseHooks: {
+        user: {
+            create: {
+                before: async (user) => {
+                    // Champs additionnels typés `unknown` par Better Auth.
+                    const asText = (value: unknown) =>
+                        typeof value === "string" ? value : null;
+                    const composed = composeName(
+                        asText(user.firstName),
+                        asText(user.lastName)
+                    );
+                    if (!composed) return;
+                    return { data: { ...user, name: composed } };
+                },
+            },
+        },
+    },
     emailAndPassword: {
         enabled: true,
         /**

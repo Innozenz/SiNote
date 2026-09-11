@@ -1,9 +1,10 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
-import { PageTitle } from "@/components/editorial";
+import { PageHeader } from "@/components/editorial";
 import { ListFilters } from "@/components/list-filters";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { auth } from "@/lib/auth";
@@ -18,6 +19,8 @@ import { ageOn } from "@/lib/user/age";
  * cours, prochain / dernier), et mène à sa fiche. Recherche par nom et filtre
  * par instrument vivent dans l'URL — la page filtre côté serveur.
  */
+export const metadata: Metadata = { title: "Mes élèves" };
+
 export default async function TeacherStudentsPage({
   searchParams,
 }: {
@@ -107,15 +110,19 @@ export default async function TeacherStudentsPage({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-      <header className="flex flex-col gap-2 border-b border-border pb-6">
-        <PageTitle size="page">Mes élèves</PageTitle>
-        <p className="text-sm text-muted">
-          {rows.length === 0
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Mes élèves"
+        lead={
+          rows.length === 0
             ? "Vos élèves apparaîtront ici dès votre premier cours réservé."
-            : `${rows.length} élève${rows.length > 1 ? "s" : ""} ont réservé avec vous.`}
-        </p>
-      </header>
+            : rows.length === 1
+              ? "1 élève a réservé avec vous."
+              : `${rows.length} élèves ont réservé avec vous.`
+        }
+      />
 
       {rows.length > 0 ? (
         <ListFilters

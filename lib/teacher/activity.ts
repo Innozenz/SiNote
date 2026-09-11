@@ -7,6 +7,7 @@ import {
   MINUTES_PER_DAY,
   wallClockToInstant,
 } from "@/lib/availability/zone";
+import { formatPrice } from "@/lib/format/price";
 
 /**
  * Pilotage d'activité du prof : période, agrégats, journal, CSV.
@@ -433,9 +434,7 @@ export const JOURNAL_STATUS_LABELS: Record<string, string> = {
 
 /** Centimes → euros sans décimales, séparateur français (« 1 250 € »). */
 export function formatEuros(cents: number): string {
-  return `${(cents / 100).toLocaleString("fr-FR", {
-    maximumFractionDigits: 0,
-  })} €`;
+  return formatPrice(cents);
 }
 
 /** Minutes → « 12 h » ou « 12 h 30 ». */

@@ -45,16 +45,14 @@ export default async function AccountPage() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12 sm:py-16">
+    <div className="flex flex-col gap-8">
       <PageHeader
-        eyebrow="Compte"
+        size="page"
+        eyebrow="Espace connecté"
         title="Mon compte"
         lead="Votre identité sur SiNote, quel que soit votre rôle."
       />
-
-      <div className="mt-10">
-        <AccountForm initial={initial} />
-      </div>
-    </main>
+      <AccountForm initial={initial} />
+    </div>
   );
 }

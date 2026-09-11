@@ -35,6 +35,7 @@ import {
 } from "@/components/student-profile-detail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -51,6 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { checkTransition, type BookingAction } from "@/lib/bookings/transitions";
 import { canDocument } from "@/lib/reports/eligibility";
+import { formatPrice } from "@/lib/format/price";
 import { postJson } from "@/lib/http/failure";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
 import {
@@ -60,7 +62,6 @@ import {
 } from "@/lib/availability/zone";
 import {
   buildWeekAgenda,
-  closedGaps,
   type AgendaDay,
   type PlacedEvent,
 } from "@/lib/teacher/agenda";
@@ -263,6 +264,39 @@ const ACTION_SUCCESS: Record<BookingAction, string> = {
   no_show: "Élève marqué absent.",
 };
 
+/**
+ * Actions irréversibles, confirmées avant d'être envoyées. Le motif est
+ * transmis à l'élève pour refuser et annuler (le serveur le stocke en
+ * `cancellationReason`) ; l'absence n'a pas de motif à donner.
+ */
+const DESTRUCTIVE: Partial<
+  Record<
+    BookingAction,
+    { title: string; description: string; confirm: string; reason?: string }
+  >
+> = {
+  decline: {
+    title: "Refuser cette demande ?",
+    description:
+      "Le créneau redevient réservable et l'élève est prévenu. Cette décision est définitive.",
+    confirm: "Refuser la demande",
+    reason: "Motif (facultatif, transmis à l'élève)",
+  },
+  cancel: {
+    title: "Annuler ce cours ?",
+    description:
+      "Le cours est retiré de l'agenda et l'élève est prévenu. Cette décision est définitive.",
+    confirm: "Annuler le cours",
+    reason: "Motif (facultatif, transmis à l'élève)",
+  },
+  no_show: {
+    title: "Marquer l'élève absent ?",
+    description:
+      "Le cours est clos comme non honoré : il ne compte pas dans vos cours donnés et l'élève ne pourra pas laisser d'avis.",
+    confirm: "Élève absent",
+  },
+};
+
 export function TeacherAgenda({
   rows: initial,
   rules,
@@ -382,7 +416,18 @@ export function TeacherAgenda({
     0
   );
 
-  const act = async (id: string, action: BookingAction) => {
+  // Action qui retire quelque chose à quelqu'un : confirmée dans une boîte de
+  // dialogue avant d'atteindre le serveur. Confirmer et clôturer, non.
+  const [pending, setPending] = useState<{
+    id: string;
+    action: BookingAction;
+  } | null>(null);
+
+  const act = async (
+    id: string,
+    action: BookingAction,
+    reason?: string
+  ): Promise<boolean> => {
     setBusy(true);
 
     try {
@@ -391,12 +436,12 @@ export function TeacherAgenda({
         lateCancellation?: boolean;
       }>(`/api/bookings/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify(reason ? { action, reason } : { action }),
       });
 
       if (!result.ok) {
-        notifyFailure(result.failure, { onRetry: () => act(id, action) });
-        return;
+        notifyFailure(result.failure, { onRetry: () => act(id, action, reason) });
+        return false;
       }
 
       const { status } = result.data;
@@ -417,13 +462,14 @@ export function TeacherAgenda({
             "Le créneau est de nouveau réservable."
           );
         }
-        return;
+        return true;
       }
 
       setRows((current) =>
         current.map((row) => (row.id === id ? { ...row, status } : row))
       );
       notifySuccess(ACTION_SUCCESS[action]);
+      return true;
     } finally {
       setBusy(false);
     }
@@ -545,8 +591,30 @@ export function TeacherAgenda({
     draggingId: drag?.id ?? null,
   };
 
+  const pendingSpec = pending ? DESTRUCTIVE[pending.action] : undefined;
+
   return (
     <div className="flex flex-col gap-6">
+      {pending && pendingSpec ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPending(null);
+          }}
+          title={pendingSpec.title}
+          description={pendingSpec.description}
+          confirmLabel={pendingSpec.confirm}
+          destructive
+          busy={busy}
+          reason={
+            pendingSpec.reason ? { label: pendingSpec.reason } : undefined
+          }
+          onConfirm={async (reason) => {
+            const ok = await act(pending.id, pending.action, reason || undefined);
+            if (ok) setPending(null);
+          }}
+        />
+      ) : null}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -719,7 +787,11 @@ export function TeacherAgenda({
               timezone={timezone}
               now={now}
               busy={busy}
-              onAct={act}
+              onAct={(id, action) =>
+                DESTRUCTIVE[action]
+                  ? setPending({ id, action })
+                  : void act(id, action)
+              }
               onShowProfile={() => setShowProfile(true)}
             />
           ) : null}
@@ -813,11 +885,11 @@ function DayColumn({
     height: `${offset(end) - offset(start)}%`,
   });
 
-  // Plages fermées (le gris) à nommer : « Fermé » à même la bande, comme
-  // « Congé » sur la hachure. Sur une journée sans aucune ouverture, c'est un
-  // seul gros trou → un « Fermé » centré ; sur une journée partielle, un par
-  // creux assez haut.
-  const gaps = closedGaps(day.open, rangeStart, rangeEnd);
+  // « Fermé » n'est écrit que sur une journée sans aucune ouverture, une
+  // fois, au centre. Un mot par creux — jusqu'à sept par écran — chargeait la
+  // grille sans rien apprendre : la légende nomme déjà le gris, et sur une
+  // journée partielle le blanc des ouvertures dit le reste.
+  const fullyClosed = day.open.length === 0;
 
   return (
     // Gris par défaut : hors des plages ouvertes, personne ne peut réserver.
@@ -859,20 +931,17 @@ function DayColumn({
         style={{ backgroundImage: HOUR_LINES }}
       />
 
-      {/* « Fermé » au centre de chaque plage fermée assez haute — au-dessus des
-          lignes horaires, sous les cours (un cours posé sur un créneau fermé le
-          recouvre). Les creux trop courts restent muets pour ne pas charger. */}
-      {gaps.map((gap) =>
-        gap.end - gap.start >= 45 ? (
-          <span
-            key={`closed-label-${gap.start}`}
-            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted"
-            style={{ top: `${offset((gap.start + gap.end) / 2)}%` }}
-          >
-            Fermé
-          </span>
-        ) : null
-      )}
+      {/* « Fermé » au centre d'une journée entièrement fermée — au-dessus des
+          lignes horaires, sous les cours (un cours posé hors ouverture le
+          recouvre). */}
+      {fullyClosed ? (
+        <span
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted"
+          style={{ top: `${offset((rangeStart + rangeEnd) / 2)}%` }}
+        >
+          Fermé
+        </span>
+      ) : null}
 
       {day.events.map((placed) => (
         <EventBlock
@@ -1062,9 +1131,7 @@ function BookingDetail({
         <Badge variant="secondary">{STATUS_LABELS[row.status]}</Badge>
         <Badge variant="secondary">{MODE_LABELS[row.mode]}</Badge>
         {row.priceCents !== null ? (
-          <Badge variant="secondary">
-            {`${(row.priceCents / 100).toFixed(2)} €`}
-          </Badge>
+          <Badge variant="secondary">{formatPrice(row.priceCents)}</Badge>
         ) : null}
         {row.isTrial ? (
           <Badge variant="secondary">

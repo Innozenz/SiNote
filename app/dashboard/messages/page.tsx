@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MessageSquare, Paperclip } from "lucide-react";
@@ -17,6 +18,8 @@ import prisma from "@/lib/prisma";
  * dossier) — on n'a pas dupliqué l'écran de conversation, on l'indexe. Les
  * commentaires de comptes rendus restent sur leur compte rendu.
  */
+export const metadata: Metadata = { title: "Messages" };
+
 export default async function MessagesInboxPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/");
@@ -94,16 +97,21 @@ export default async function MessagesInboxPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Espace connecté" title="Messages" />
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace connecté"
+        title="Messages"
+        lead="Vos conversations, la plus récente en premier."
+      />
 
       {conversations.length === 0 ? (
-        <p className="mt-10 rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
+        <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
           Aucune conversation pour l&apos;instant. Les échanges démarrent depuis
           {viewer === "TEACHER" ? " une fiche élève" : " un dossier de prof"}.
         </p>
       ) : (
-        <RowList className="mt-10">
+        <RowList>
           {conversations.map((convo) => {
             const k = `${convo.teacherId}::${convo.studentId}`;
             const party = other.get(k);

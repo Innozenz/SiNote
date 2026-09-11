@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -16,6 +17,8 @@ import { isSubscriptionActive } from "@/lib/teacher/visibility";
  * Les données initiales sont chargées côté serveur : le formulaire s'affiche
  * rempli dès le premier rendu, sans état de chargement ni requête au montage.
  */
+export const metadata: Metadata = { title: "Ma fiche" };
+
 export default async function TeacherProfilePage() {
   const session = await auth.api.getSession({ headers: await headers() });
 

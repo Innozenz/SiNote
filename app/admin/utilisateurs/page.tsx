@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { Prisma } from "@prisma/client";
 
 import { AdminUsers, type AdminUserRow } from "@/components/admin-users";
@@ -23,6 +24,8 @@ import { isSubscriptionActive } from "@/lib/teacher/visibility";
  * Le rôle est **affiché, jamais modifiable** : aucune interface ne distribue de
  * rôle (surtout ADMIN), décision documentée dans `lib/admin/session.ts`.
  */
+export const metadata: Metadata = { title: "Utilisateurs" };
+
 export default async function AdminUsersPage({
   searchParams,
 }: {
@@ -154,9 +157,9 @@ export default async function AdminUsersPage({
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
+        size="page"
         eyebrow="Administration"
         title="Utilisateurs"
-        titleClassName="text-3xl"
         lead="Tous les comptes, leur rôle et leur fiche. L'accès d'un professeur se gère ici, sans passer par Stripe."
         meta={
           <p className="text-sm text-muted">

@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/editorial";
 import {
   TeacherBookings,
   type BookingRow,
@@ -22,6 +24,8 @@ import { isSubscriptionActive } from "@/lib/teacher/visibility";
  * de chargement. Les actions passent ensuite par PATCH /api/bookings/[id], qui
  * porte la machine à états — cet écran n'en réimplémente aucune règle.
  */
+export const metadata: Metadata = { title: "Demandes de cours" };
+
 export default async function TeacherBookingsPage() {
   const session = await auth.api.getSession({ headers: await headers() });
 
@@ -154,11 +158,17 @@ export default async function TeacherBookingsPage() {
 
   const profile = user.teacherProfile;
 
-  // L'avertissement ne s'affiche que sur une boîte réellement vide : un prof
-  // qui a déjà des cours sait que sa fiche fonctionne, et le répéter le
-  // transformerait en bruit.
-  const blocker =
-    rows.length === 0
+  // L'avertissement ne s'affiche que quand rien n'est en cours — ni demande
+  // à traiter, ni cours confirmé à venir. Un prof dont l'agenda vit sait que
+  // sa fiche fonctionne, et le répéter serait du bruit ; un prof qui n'a que
+  // de l'historique et une fiche invisible, lui, conclurait que personne ne
+  // cherche de cours.
+  const live = bookings.some(
+    (booking) =>
+      (booking.status === "PENDING" || booking.status === "CONFIRMED") &&
+      booking.endsAt > now
+  );
+  const blocker = !live
       ? visibilityBlocker({
           publishable: checkPublishable({
             headline: profile.headline,
@@ -177,7 +187,13 @@ export default async function TeacherBookingsPage() {
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        size="page"
+        eyebrow="Espace professeur"
+        title="Demandes de cours"
+        lead="Les demandes à traiter, les cours à venir, ceux à clôturer, et l'historique."
+      />
       {blocker ? <TeacherVisibilityNotice blocker={blocker} /> : null}
       <TeacherBookings initial={rows} timezone={user.timezone} />
     </div>

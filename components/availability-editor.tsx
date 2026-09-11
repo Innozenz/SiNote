@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Copy, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { SectionTitle } from "@/components/editorial";
 import { FormFailure } from "@/components/form-failure";
@@ -59,6 +59,26 @@ export function AvailabilityEditor({
 
   const removeRow = (index: number) =>
     setRows((current) => current.filter((_, i) => i !== index));
+
+  // Jour dont le sélecteur « Copier sur… » est ouvert, et jours cochés.
+  const [copyFrom, setCopyFrom] = useState<number | null>(null);
+  const [copyTargets, setCopyTargets] = useState<number[]>([]);
+
+  // Recopie les plages d'un jour sur d'autres, en remplaçant les leurs : la
+  // même semaine type se tapait cinq fois, plage par plage.
+  const applyCopy = () => {
+    if (copyFrom === null || copyTargets.length === 0) return;
+    setRows((current) => {
+      const source = current.filter((row) => row.weekday === copyFrom);
+      const kept = current.filter((row) => !copyTargets.includes(row.weekday));
+      const copies = copyTargets.flatMap((weekday) =>
+        source.map((row) => ({ ...row, weekday }))
+      );
+      return [...kept, ...copies];
+    });
+    setCopyFrom(null);
+    setCopyTargets([]);
+  };
 
   const save = async () => {
     setIsSaving(true);
@@ -118,7 +138,7 @@ export function AvailabilityEditor({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <div className="flex flex-col gap-10">
       <section className="flex flex-col gap-5">
         <div>
           <SectionTitle>Semaine type</SectionTitle>
@@ -159,21 +179,26 @@ export function AvailabilityEditor({
                   ) : (
                     dayRows.map(({ row, index }) => (
                       <div key={index} className="flex items-center gap-2">
+                        {/* `type="time"` comme le formulaire d'absences : le
+                            texte libre attendait « 09:00 » et ne le disait
+                            qu'à l'enregistrement. */}
                         <Input
+                          type="time"
+                          step={300}
                           aria-label={`Début, ${WEEKDAY_LABELS[weekday]}`}
-                          className="w-28"
+                          className="w-32"
                           value={row.start}
-                          placeholder="09:00"
                           onChange={(e) =>
                             updateRow(index, { start: e.target.value })
                           }
                         />
                         <span className="text-subtle">→</span>
                         <Input
+                          type="time"
+                          step={300}
                           aria-label={`Fin, ${WEEKDAY_LABELS[weekday]}`}
-                          className="w-28"
+                          className="w-32"
                           value={row.end}
-                          placeholder="12:00"
                           onChange={(e) =>
                             updateRow(index, { end: e.target.value })
                           }
@@ -190,14 +215,69 @@ export function AvailabilityEditor({
                     ))
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => addRow(weekday)}
-                    className="flex w-fit items-center gap-1 text-sm text-primary hover:underline"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Ajouter une plage
-                  </button>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => addRow(weekday)}
+                      className="flex w-fit items-center gap-1 text-sm text-primary hover:underline"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Ajouter une plage
+                    </button>
+                    {dayRows.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCopyFrom(copyFrom === weekday ? null : weekday);
+                          setCopyTargets([]);
+                        }}
+                        aria-expanded={copyFrom === weekday}
+                        className="flex w-fit items-center gap-1 text-sm text-muted hover:text-foreground hover:underline"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Copier sur…
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {copyFrom === weekday ? (
+                    <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface px-3 py-2 text-sm">
+                      {[1, 2, 3, 4, 5, 6, 7]
+                        .filter((other) => other !== weekday)
+                        .map((other) => (
+                          <label
+                            key={other}
+                            className="flex cursor-pointer items-center gap-1.5"
+                          >
+                            <input
+                              type="checkbox"
+                              className="accent-primary h-4 w-4"
+                              checked={copyTargets.includes(other)}
+                              onChange={(e) =>
+                                setCopyTargets((current) =>
+                                  e.target.checked
+                                    ? [...current, other]
+                                    : current.filter((d) => d !== other)
+                                )
+                              }
+                            />
+                            {WEEKDAY_LABELS[other]}
+                          </label>
+                        ))}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={copyTargets.length === 0}
+                        onClick={applyCopy}
+                      >
+                        Appliquer
+                      </Button>
+                      <span className="text-xs text-subtle">
+                        Remplace les plages des jours cochés.
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
