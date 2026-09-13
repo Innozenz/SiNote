@@ -2,14 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Search, Video } from "lucide-react";
-
-import { cn } from "@/lib/utils";
+import { ChevronDown, Search } from "lucide-react";
 
 /**
  * « visio », « en visio », « en ligne », « à distance » tapés dans le champ
- * Ville : l'ancien placeholder y invitait (« … ou en visio ») et la valeur
- * partait en filtre `ville`, donc zéro résultat. On la lit comme un mode.
+ * Ville : le placeholder y invite, et sans traitement la valeur partirait en
+ * filtre `ville`, donc zéro résultat. On la lit comme un mode.
  */
 const ONLINE_WORDS = /^(en\s+|à\s+)?(visio|visioconf(?:é|e)rence|ligne|distance)$/i;
 
@@ -18,9 +16,9 @@ const ONLINE_WORDS = /^(en\s+|à\s+)?(visio|visioconf(?:é|e)rence|ligne|distanc
  *
  * Îlot client au sein d'une page serveur : elle ne détient aucun résultat, elle
  * ne fait que composer l'URL de `/profs` et y naviguer — exactement les mêmes
- * paramètres que les filtres de recherche (`instrument`, `ville`), donc aucune
- * logique dupliquée. Le catalogue d'instruments vient du serveur (uniquement
- * ceux réellement enseignés).
+ * paramètres que les filtres de recherche (`instrument`, `ville`, `mode`), donc
+ * aucune logique dupliquée. Le catalogue d'instruments vient du serveur
+ * (uniquement ceux réellement enseignés).
  */
 export function HeroSearch({
   instruments,
@@ -30,7 +28,6 @@ export function HeroSearch({
   const router = useRouter();
   const [instrument, setInstrument] = useState("");
   const [ville, setVille] = useState("");
-  const [online, setOnline] = useState(false);
 
   // Ordre alphabétique pour la liste déroulante, plus facile à parcourir que
   // l'ordre « le plus enseigné d'abord » de la requête.
@@ -39,14 +36,17 @@ export function HeroSearch({
     [instruments]
   );
 
-  // Mêmes paramètres que les filtres de /profs : `instrument`, `ville`, `mode`.
   const submit = () => {
     const params = new URLSearchParams();
     if (instrument) params.set("instrument", instrument);
     const city = ville.trim();
-    const wantsOnline = online || ONLINE_WORDS.test(city);
-    if (city && !ONLINE_WORDS.test(city)) params.set("ville", city);
-    if (wantsOnline) params.set("mode", "online");
+    // « visio » (et variantes) écrit dans le champ Ville → mode en ligne, pas
+    // un filtre de ville qui ne matcherait rien.
+    if (ONLINE_WORDS.test(city)) {
+      params.set("mode", "online");
+    } else if (city) {
+      params.set("ville", city);
+    }
     const qs = params.toString();
     router.push(qs ? `/profs?${qs}` : "/profs");
   };
@@ -83,7 +83,7 @@ export function HeroSearch({
         </div>
       </label>
 
-      <label className="flex flex-[1.2] flex-col justify-center gap-0.5 border-b border-border px-4 py-2.5 sm:border-b-0">
+      <label className="flex flex-[1.2] flex-col justify-center gap-0.5 px-4 py-2.5">
         <span className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-subtle">
           Ville
         </span>
@@ -91,27 +91,9 @@ export function HeroSearch({
           type="text"
           value={ville}
           onChange={(event) => setVille(event.target.value)}
-          placeholder="Lyon, Paris…"
+          placeholder="Lyon, Paris… ou en visio"
           className="w-full bg-transparent text-sm font-medium text-foreground placeholder:font-normal placeholder:text-subtle focus:outline-none"
         />
-      </label>
-
-      {/* Bascule visio : un cours en ligne n'a pas de ville, il fallait un
-          contrôle à lui plutôt qu'un mot à deviner dans le champ Ville. */}
-      <label
-        className={cn(
-          "flex cursor-pointer items-center gap-2 border-b border-border px-4 py-2.5 text-sm transition-colors sm:border-b-0 sm:border-l",
-          online ? "text-primary" : "text-muted hover:text-foreground"
-        )}
-      >
-        <input
-          type="checkbox"
-          className="accent-primary h-4 w-4"
-          checked={online}
-          onChange={(event) => setOnline(event.target.checked)}
-        />
-        <Video className="h-4 w-4" aria-hidden />
-        <span className="whitespace-nowrap">En visio</span>
       </label>
 
       <button
