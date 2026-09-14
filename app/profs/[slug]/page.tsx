@@ -223,8 +223,12 @@ export default async function TeacherPublicPage({
         }}
       />
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
-        <div className="flex flex-col gap-6">
+      {/* Trois blocs, placés explicitement en grille sur desktop ; sur mobile
+          l'ordre du DOM règne — en-tête, puis réservation, puis le corps (bio,
+          modalités, avis). Sinon une bio longue repoussait le widget tout en
+          bas de page et l'élève devait scroller pour trouver comment réserver. */}
+      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[1fr_380px]">
+        <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-1">
           <Link
             href="/profs"
             className="flex w-fit items-center gap-1 text-sm text-muted hover:underline"
@@ -288,7 +292,49 @@ export default async function TeacherPublicPage({
               ))}
             </div>
           </header>
+        </div>
 
+        {/* Colonne de réservation — sur mobile elle remonte juste sous
+            l'en-tête grâce à l'ordre du DOM ; sur desktop elle occupe la
+            colonne droite sur toute la hauteur (row-span-2) et reste sticky.
+            Sa hauteur est plafonnée à la fenêtre avec défilement interne : sinon
+            un widget plus haut que l'écran (une semaine de créneaux + le
+            formulaire) débordait sous le pli, épinglé par le haut, et ne
+            laissait voir ses derniers créneaux qu'une fois arrivé au bas d'une
+            fiche à la bio longue. Court, il n'affiche aucune barre. */}
+        <aside className="flex flex-col gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
+          {rate ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-2xl">
+                  {`${rate} €`}
+                  <span className="text-base font-normal text-muted">
+                    {" / heure"}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted">
+                  Réglé directement au prof, hors plateforme.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <BookingWidget
+            teacherSlug={teacher.slug}
+            instruments={instruments.map((i) => ({
+              slug: i.slug,
+              name: i.name,
+            }))}
+            timezone={teacher.user.timezone}
+            trialOffered={teacher.trialLessonOffered}
+            viewer={viewer}
+          />
+        </aside>
+
+        {/* Colonne gauche — corps de la fiche */}
+        <div className="flex flex-col gap-6 lg:col-start-1 lg:row-start-2">
           {teacher.bio ? (
             <section className="flex flex-col gap-4">
               <SectionTitle>À propos</SectionTitle>
@@ -333,38 +379,6 @@ export default async function TeacherPublicPage({
             timezone={teacher.user.timezone}
           />
         </div>
-
-        {/* Colonne de réservation */}
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
-          {rate ? (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-2xl">
-                  {`${rate} €`}
-                  <span className="text-base font-normal text-muted">
-                    {" / heure"}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted">
-                  Réglé directement au prof, hors plateforme.
-                </p>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <BookingWidget
-            teacherSlug={teacher.slug}
-            instruments={instruments.map((i) => ({
-              slug: i.slug,
-              name: i.name,
-            }))}
-            timezone={teacher.user.timezone}
-            trialOffered={teacher.trialLessonOffered}
-            viewer={viewer}
-          />
-        </aside>
       </div>
       </main>
       <SiteFooter />
