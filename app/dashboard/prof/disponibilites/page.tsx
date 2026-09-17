@@ -2,12 +2,22 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { AgendaViewSwitch } from "@/components/agenda-view-switch";
 import { AvailabilityEditor } from "@/components/availability-editor";
 import { PageHeader } from "@/components/editorial";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-export const metadata: Metadata = { title: "Disponibilités" };
+/**
+ * Onglet « Horaires » de l'agenda : la semaine type et les absences.
+ *
+ * Même en-tête que les vues jour/semaine/mois — c'est le même écran, vu du
+ * côté réglage. L'adresse historique /dashboard/prof/disponibilites est
+ * conservée (liens, favoris) ; seule la navigation a changé.
+ */
+export const metadata: Metadata = { title: "Agenda — horaires" };
+
+const AGENDA = "/dashboard/prof/agenda";
 
 export default async function TeacherAvailabilityPage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -46,8 +56,20 @@ export default async function TeacherAvailabilityPage() {
       <PageHeader
         size="page"
         eyebrow="Espace professeur"
-        title="Disponibilités"
+        title="Agenda"
         lead="Votre semaine type et vos absences : c'est ce qui décide des créneaux proposés aux élèves."
+        meta={
+          <div className="flex sm:justify-end">
+            <AgendaViewSwitch
+              view="horaires"
+              nav={{
+                dayHref: `${AGENDA}?vue=jour`,
+                weekHref: AGENDA,
+                monthHref: `${AGENDA}?vue=mois`,
+              }}
+            />
+          </div>
+        }
       />
       <AvailabilityEditor
         timezone={user.timezone}

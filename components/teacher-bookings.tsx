@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { InstrumentFamily } from "@prisma/client";
 import {
   AlertTriangle,
   CalendarX,
@@ -14,6 +15,11 @@ import {
   X,
 } from "lucide-react";
 
+import { InstrumentChip } from "@/components/instrument-chip";
+import {
+  LESSON_MODE_LABELS,
+  LessonStatusBadge,
+} from "@/components/lesson-status";
 import {
   LEVEL_LABELS,
   StudentProfileBody,
@@ -47,11 +53,14 @@ export type BookingRow = {
     | "DECLINED";
   startsAt: string;
   endsAt: string;
+  /** Réception de la demande : ce qui date l'attente de l'élève. */
+  createdAt: string;
   mode: "ONLINE" | "TEACHER_PLACE" | "STUDENT_PLACE";
   isTrial: boolean;
   priceCents: number | null;
   studentMessage: string | null;
   instrumentName: string;
+  instrumentFamily: InstrumentFamily;
   studentName: string | null;
 
   // Résumé de carte : niveau sur l'instrument demandé uniquement.
@@ -71,7 +80,7 @@ export type BookingRow = {
 type Action = "confirm" | "decline" | "cancel" | "complete" | "no_show";
 
 /** Onglet actif de la boîte de réception. */
-type BookingTab = "pending" | "upcoming" | "toReview" | "past";
+export type BookingTab = "pending" | "upcoming" | "toReview" | "past";
 
 // Confirmation affichée en toast selon l'action réussie.
 const ACTION_SUCCESS: Record<Action, string> = {
@@ -121,40 +130,20 @@ const DESTRUCTIVE: Partial<
   },
 };
 
-/** Couleur du badge d'état — les mêmes teintes que la légende de l'agenda. */
-const STATUS_VARIANTS: Record<
-  BookingRow["status"],
-  "success" | "warning" | "destructive" | "secondary"
-> = {
-  PENDING: "warning",
-  CONFIRMED: "success",
-  COMPLETED: "success",
-  NO_SHOW: "destructive",
-  CANCELLED: "secondary",
-  DECLINED: "secondary",
-};
-
-const MODE_LABELS: Record<BookingRow["mode"], string> = {
-  ONLINE: "Visio",
-  TEACHER_PLACE: "Chez vous",
-  STUDENT_PLACE: "Chez l'élève",
-};
-
-const STATUS_LABELS: Record<BookingRow["status"], string> = {
-  PENDING: "En attente",
-  CONFIRMED: "Confirmé",
-  CANCELLED: "Annulé",
-  COMPLETED: "Terminé",
-  NO_SHOW: "Non honoré",
-  DECLINED: "Refusé",
-};
+// Libellés et teintes viennent de `components/lesson-status` : l'agenda, cette
+// boîte et la fiche élève doivent nommer un état du même mot, sans quoi on croit
+// en voir deux.
+const MODE_LABELS = LESSON_MODE_LABELS;
 
 export function TeacherBookings({
   initial,
   timezone,
+  initialTab = "pending",
 }: {
   initial: BookingRow[];
   timezone: string;
+  /** Onglet d'arrivée, porté par `?onglet=` — l'accueil y renvoie directement. */
+  initialTab?: BookingTab;
 }) {
   const [rows, setRows] = useState(initial);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -162,8 +151,10 @@ export function TeacherBookings({
   const [pending, setPending] = useState<{ id: string; action: Action } | null>(
     null
   );
-  // Onglet affiché ; « en attente » par défaut, c'est là que se trouve l'action.
-  const [tab, setTab] = useState<BookingTab>("pending");
+  // Onglet affiché ; « en attente » par défaut, c'est là que se trouve
+  // l'action, mais un lien peut en désigner un autre (« Cours à clôturer »
+  // depuis l'accueil).
+  const [tab, setTab] = useState<BookingTab>(initialTab);
   // Demande dont la modale « profil de l'élève » est ouverte.
   const [profileRow, setProfileRow] = useState<Enriched | null>(null);
 
@@ -226,13 +217,24 @@ export function TeacherBookings({
 
   // Toujours dans le fuseau du prof : c'est son agenda qu'il consulte, pas
   // celui du navigateur depuis lequel il le consulte.
-  const format = (date: Date) =>
-    date.toLocaleString("fr-FR", {
+  const time = (date: Date) =>
+    date.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: timezone,
+    });
+  const longDay = (date: Date) =>
+    date.toLocaleDateString("fr-FR", {
       weekday: "long",
       day: "numeric",
       month: "long",
-      hour: "2-digit",
-      minute: "2-digit",
+      timeZone: timezone,
+    });
+  const shortDay = (date: Date) =>
+    date.toLocaleDateString("fr-FR", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
       timeZone: timezone,
     });
 
@@ -252,16 +254,39 @@ export function TeacherBookings({
             : "border-border"
         )}
       >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <p className="font-medium">
-              {row.studentName ?? "Élève"} — {row.instrumentName}
-            </p>
-            <p className="text-sm text-muted">
-              {format(row.startsAt)} · {MODE_LABELS[row.mode]}
-              {row.priceCents !== null ? ` · ${formatPrice(row.priceCents)}` : ""}
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          {/* L'heure porte la carte, en Cormorant, comme partout ailleurs dans
+              l'espace prof : c'est ce qu'on cherche en premier sur une demande,
+              avant même de savoir qui l'envoie. */}
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="shrink-0">
+              <p className="font-display text-2xl font-semibold leading-none tabular-nums">
+                {time(row.startsAt)}
+              </p>
+              <p className="mt-1 text-xs text-subtle first-letter:uppercase">
+                {shortDay(row.startsAt)}
+              </p>
+            </div>
+
+            <div className="min-w-0">
+              <p className="truncate font-medium">
+                {row.studentName ?? "Élève"}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted">
+                <InstrumentChip
+                  name={row.instrumentName}
+                  family={row.instrumentFamily}
+                  detail={row.studentLevel ? LEVEL_LABELS[row.studentLevel].toLowerCase() : null}
+                  size="xs"
+                />
+                <span className="text-xs">{MODE_LABELS[row.mode]}</span>
+                {row.priceCents !== null ? (
+                  <span className="text-xs">{formatPrice(row.priceCents)}</span>
+                ) : null}
+              </div>
+            </div>
           </div>
+
           <div className="flex items-center gap-2">
             {row.isTrial ? (
               <Badge variant="secondary">
@@ -275,13 +300,25 @@ export function TeacherBookings({
                 Bientôt
               </Badge>
             ) : null}
-            {row.status !== "PENDING" && row.status !== "CONFIRMED" ? (
-              <Badge variant={STATUS_VARIANTS[row.status]}>
-                {STATUS_LABELS[row.status]}
-              </Badge>
-            ) : null}
+            <LessonStatusBadge status={row.status} />
           </div>
         </div>
+
+        {/* Ce que coûte une demande laissée en attente : elle a l'air inerte,
+            elle immobilise pourtant le créneau. Écrit sur la carte, pas
+            seulement en tête d'onglet. */}
+        {row.status === "PENDING" ? (
+          <p className="text-xs text-muted">
+            <span className="first-letter:uppercase">
+              Demandé {shortDay(new Date(row.createdAt))}
+            </span>
+            {" · bloque ce créneau"}
+          </p>
+        ) : (
+          <p className="text-xs text-subtle first-letter:uppercase">
+            {longDay(row.startsAt)}
+          </p>
+        )}
 
         {/* Résumé ciblé + accès au profil complet en modale. Sans ce résumé,
             une demande arrive nue et le prof accepte à l'aveugle. */}

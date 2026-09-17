@@ -45,8 +45,14 @@ export type FamilyStyle = {
   /** Texte et pastille : la teinte pleine. */
   text: string;
   dot: string;
-  /** Pastille d'instrument : fond très clair, teinte au survol. */
+  /** Pastille d'instrument **cliquable** : fond très clair, teinte au survol. */
   chip: string;
+  /**
+   * Même pastille, mais **inerte** : dans l'espace connecté, une chip nomme
+   * l'instrument d'un cours, elle ne mène nulle part. Le survol de `chip`
+   * promettait alors un clic qui n'existe pas.
+   */
+  chipStatic: string;
 };
 
 export const FAMILY_STYLES: Record<InstrumentFamily, FamilyStyle> = {
@@ -54,41 +60,49 @@ export const FAMILY_STYLES: Record<InstrumentFamily, FamilyStyle> = {
     text: "text-family-voice",
     dot: "bg-family-voice",
     chip: "bg-family-voice-soft text-family-voice hover:bg-family-voice hover:text-white",
+    chipStatic: "bg-family-voice-soft text-family-voice",
   },
   KEYBOARD: {
     text: "text-family-keyboard",
     dot: "bg-family-keyboard",
     chip: "bg-family-keyboard-soft text-family-keyboard hover:bg-family-keyboard hover:text-white",
+    chipStatic: "bg-family-keyboard-soft text-family-keyboard",
   },
   STRINGS: {
     text: "text-family-strings",
     dot: "bg-family-strings",
     chip: "bg-family-strings-soft text-family-strings hover:bg-family-strings hover:text-white",
+    chipStatic: "bg-family-strings-soft text-family-strings",
   },
   WINDS: {
     text: "text-family-winds",
     dot: "bg-family-winds",
     chip: "bg-family-winds-soft text-family-winds hover:bg-family-winds hover:text-white",
+    chipStatic: "bg-family-winds-soft text-family-winds",
   },
   BRASS: {
     text: "text-family-brass",
     dot: "bg-family-brass",
     chip: "bg-family-brass-soft text-family-brass hover:bg-family-brass hover:text-white",
+    chipStatic: "bg-family-brass-soft text-family-brass",
   },
   PERCUSSION: {
     text: "text-family-percussion",
     dot: "bg-family-percussion",
     chip: "bg-family-percussion-soft text-family-percussion hover:bg-family-percussion hover:text-white",
+    chipStatic: "bg-family-percussion-soft text-family-percussion",
   },
   ELECTRONIC: {
     text: "text-family-electronic",
     dot: "bg-family-electronic",
     chip: "bg-family-electronic-soft text-family-electronic hover:bg-family-electronic hover:text-white",
+    chipStatic: "bg-family-electronic-soft text-family-electronic",
   },
   THEORY: {
     text: "text-family-theory",
     dot: "bg-family-theory",
     chip: "bg-family-theory-soft text-family-theory hover:bg-family-theory hover:text-white",
+    chipStatic: "bg-family-theory-soft text-family-theory",
   },
 };
 

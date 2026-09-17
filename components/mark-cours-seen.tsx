@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { markCoursSeen } from "./actions";
+import { markCoursSeen } from "@/lib/student/mark-cours-seen";
 
 /**
  * Déclenche le marquage « vu » de la page « Mes cours » au montage réel.

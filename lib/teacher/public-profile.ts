@@ -36,6 +36,10 @@ export const getPublicTeacher = cache(async (slug: string) => {
       trialLessonOffered: true,
       trialLessonMinutes: true,
       defaultDurationMin: true,
+      // Le pas de la grille : le widget s'en sert pour n'afficher d'abord que
+      // les départs à l'heure ronde, et ne proposer les intermédiaires que si
+      // le prof en a.
+      slotGranularityMin: true,
       publishedAt: true,
       createdAt: true,
       user: { select: { name: true, image: true, timezone: true } },

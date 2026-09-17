@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { type AgendaNav } from "@/components/agenda-view-switch";
+import { AgendaControls } from "@/components/agenda-controls";
+import {
+  type AgendaNav,
+  type AgendaView,
+} from "@/components/agenda-view-switch";
 import { PageHeader } from "@/components/editorial";
 import {
   TeacherAgenda,
@@ -11,8 +15,7 @@ import {
 import { TeacherMonth, type MonthLesson } from "@/components/teacher-month";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { isMinor } from "@/lib/student/profile";
-import { ageOn } from "@/lib/user/age";
+import { guardianSummary } from "@/lib/student/profile";
 import { dayOpenings } from "@/lib/availability";
 import { addDays, civilDateKeyInZone } from "@/lib/availability/zone";
 import {
@@ -34,14 +37,18 @@ import {
  */
 export const metadata: Metadata = { title: "Agenda" };
 
-/** En-tête commun aux trois vues : le calendrier vit dessous, dans sa carte. */
-function AgendaHeader() {
+/**
+ * En-tête commun aux trois vues. Il porte les commandes (vue, période) : c'est
+ * le seul en-tête de la page, la carte du calendrier ne garde que sa période.
+ */
+function AgendaHeader({ view, nav }: { view: AgendaView; nav: AgendaNav }) {
   return (
     <PageHeader
       size="page"
       eyebrow="Espace professeur"
       title="Agenda"
       lead="Vos cours posés sur vos ouvertures : l'espace blanc entre deux cours est réservable."
+      meta={<AgendaControls view={view} nav={nav} />}
     />
   );
 }
@@ -172,8 +179,8 @@ export default async function TeacherAgendaPage({
 
     return (
       <div className="flex flex-col gap-8">
-        <AgendaHeader />
-        <TeacherMonth agenda={monthAgenda} nav={monthNav} openDays={openDays} />
+        <AgendaHeader view="mois" nav={monthNav} />
+        <TeacherMonth agenda={monthAgenda} openDays={openDays} />
       </div>
     );
   }
@@ -265,36 +272,23 @@ export default async function TeacherAgendaPage({
         status: true,
         startsAt: true,
         endsAt: true,
+        createdAt: true,
         mode: true,
         isTrial: true,
         priceCents: true,
         studentMessage: true,
-        instrument: { select: { name: true } },
+        instrument: { select: { id: true, name: true, family: true } },
         student: {
           select: {
             id: true,
-            // Profil complet : le prof peut le consulter en modale depuis un
-            // cours de l'agenda, comme sur une demande.
             birthDate: true,
-            city: true,
-            goals: true,
-            musicalBackground: true,
-            readsSheetMusic: true,
-            voiceType: true,
-            prefersOnline: true,
-            preferredGenres: true,
             guardianName: true,
             guardianEmail: true,
             guardianPhone: true,
-            user: { select: { name: true } },
-            instruments: {
-              select: {
-                level: true,
-                yearsPracticed: true,
-                ownsInstrument: true,
-                instrument: { select: { name: true } },
-              },
-            },
+            user: { select: { name: true, image: true } },
+            // Le niveau n'a de sens que par paire élève × instrument : on ne
+            // garde que celui de l'instrument réservé.
+            instruments: { select: { instrumentId: true, level: true } },
           },
         },
       },
@@ -303,46 +297,36 @@ export default async function TeacherAgendaPage({
 
   const rows: AgendaRow[] = bookings.map((booking) => {
     const student = booking.student;
+    const guardian = guardianSummary(student, now);
+    const practice = student.instruments.find(
+      (entry) => entry.instrumentId === booking.instrument.id
+    );
+
     return {
       id: booking.id,
       status: booking.status as AgendaRow["status"],
       startsAt: booking.startsAt.toISOString(),
       endsAt: booking.endsAt.toISOString(),
+      createdAt: booking.createdAt.toISOString(),
       mode: booking.mode,
       isTrial: booking.isTrial,
       priceCents: booking.priceCents,
       studentMessage: booking.studentMessage,
       instrumentName: booking.instrument.name,
+      instrumentFamily: booking.instrument.family,
+      studentLevel: practice?.level ?? null,
       studentId: student.id,
       studentName: student.user.name,
-      studentProfile: {
-        age: student.birthDate ? ageOn(student.birthDate, now) : null,
-        isMinor: isMinor(student.birthDate, now),
-        city: student.city,
-        goals: student.goals,
-        background: student.musicalBackground,
-        readsSheetMusic: student.readsSheetMusic,
-        voiceType: student.voiceType,
-        prefersOnline: student.prefersOnline,
-        genres: student.preferredGenres,
-        instruments: student.instruments.map((entry) => ({
-          name: entry.instrument.name,
-          level: entry.level,
-          yearsPracticed: entry.yearsPracticed,
-          ownsInstrument: entry.ownsInstrument,
-        })),
-        guardian: {
-          name: student.guardianName,
-          email: student.guardianEmail,
-          phone: student.guardianPhone,
-        },
-      },
+      studentImage: student.user.image,
+      studentAge: guardian.age,
+      studentIsMinor: guardian.isMinor,
+      guardianContact: guardian.contact,
     };
   });
 
   return (
     <div className="flex flex-col gap-8">
-      <AgendaHeader />
+      <AgendaHeader view={view} nav={nav} />
       <TeacherAgenda
       rows={rows}
       rules={rules.map((rule) => ({
@@ -361,7 +345,6 @@ export default async function TeacherAgendaPage({
       view={view}
       timezone={timezone}
       granularityMin={user.teacherProfile.slotGranularityMin}
-      nav={nav}
       />
     </div>
   );

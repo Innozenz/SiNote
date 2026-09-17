@@ -1,11 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import {
-  AgendaViewSwitch,
-  type AgendaNav,
-} from "@/components/agenda-view-switch";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -52,11 +46,9 @@ const MAX_CHIPS = 3;
  */
 export function TeacherMonth({
   agenda,
-  nav,
   openDays = [],
 }: {
   agenda: MonthAgenda<MonthLesson>;
-  nav: AgendaNav;
   /** Clés civiles des jours qui ont au moins une ouverture. */
   openDays?: string[];
 }) {
@@ -70,36 +62,17 @@ export function TeacherMonth({
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>{monthTitle(agenda.month)}</CardTitle>
-              <CardDescription>
-                {total === 0
-                  ? "Aucun cours ce mois-ci."
-                  : `${total} cours ce mois-ci`}
-              </CardDescription>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <AgendaViewSwitch view="mois" nav={nav} />
-              <div className="flex items-center gap-1">
-                <Button asChild variant="outline" size="sm">
-                  <Link href={nav.previousHref} aria-label="Mois précédent">
-                    <ChevronLeft className="h-4 w-4" />
-                  </Link>
-                </Button>
-                {nav.currentHref ? (
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={nav.currentHref}>{nav.currentLabel}</Link>
-                  </Button>
-                ) : null}
-                <Button asChild variant="outline" size="sm">
-                  <Link href={nav.nextHref} aria-label="Mois suivant">
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
+          {/* La période, et rien d'autre : la bascule de vue et la navigation
+              vivent dans l'en-tête de la page, pas dans un second en-tête. */}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <CardTitle className="font-display text-2xl font-semibold tracking-[-0.01em]">
+              {monthTitle(agenda.month)}
+            </CardTitle>
+            <CardDescription>
+              {total === 0
+                ? "Aucun cours ce mois-ci."
+                : `${total} cours ce mois-ci`}
+            </CardDescription>
           </div>
         </CardHeader>
 

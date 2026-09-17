@@ -19,6 +19,13 @@ import { Button } from "@/components/ui/button";
 
 export type VisibilityBlocker = "draft" | "incomplete" | "subscription";
 
+/** Libellé court de chaque cause, pour la pastille de la barre latérale. */
+export const VISIBILITY_BLOCKER_LABELS: Record<VisibilityBlocker, string> = {
+  incomplete: "Fiche incomplète : elle n'est pas visible des élèves",
+  draft: "Fiche en brouillon : elle n'est pas visible des élèves",
+  subscription: "Abonnement inactif : la fiche n'est pas visible des élèves",
+};
+
 export function TeacherVisibilityNotice({
   blocker,
 }: {

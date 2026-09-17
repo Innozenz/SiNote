@@ -1,9 +1,13 @@
-import type { Prisma } from "@prisma/client";
+import type { InstrumentFamily, Prisma } from "@prisma/client";
 
 import prisma from "@/lib/prisma";
 import { getRatingSummaries, getSiteMeanRating } from "@/lib/reviews/queries";
 import { rankTeachers } from "@/lib/reviews/ranking";
 import { EMPTY_SUMMARY, type RatingSummary } from "@/lib/reviews/summary";
+import {
+  getNextSlotsForTeachers,
+  type NextSlots,
+} from "@/lib/teacher/next-slots";
 import { visibleTeacherWhere } from "@/lib/teacher/visibility";
 import {
   normalizeTerm,
@@ -21,6 +25,8 @@ import {
  */
 
 export type SearchResult = {
+  /** Id du profil prof — clé des créneaux, jamais affichée. */
+  id: string;
   slug: string;
   name: string | null;
   image: string | null;
@@ -31,8 +37,32 @@ export type SearchResult = {
   teachesInPerson: boolean;
   teachesAtHome: boolean;
   trialLessonOffered: boolean;
-  instruments: { slug: string; name: string }[];
+  /** La famille voyage avec l'instrument : c'est elle qui porte la couleur. */
+  instruments: { slug: string; name: string; family: InstrumentFamily }[];
   rating: RatingSummary;
+  /**
+   * Prochains créneaux libres, uniquement si l'appelant les a demandés
+   * (`withNextSlots`). `null` veut dire « pas calculé », pas « aucun » — un
+   * tableau vide, lui, dit bien qu'il n'y a rien dans la fenêtre.
+   */
+  nextSlots: NextSlots | null;
+};
+
+/**
+ * Options de recherche.
+ *
+ * `withNextSlots` fait suivre les prochains créneaux de la page rendue. Il vit
+ * ici plutôt que dans chaque page pour que `/profs` et les deux pages
+ * `/cours/*` — qui affichent la même liste — les obtiennent de la même façon,
+ * en une seule passe pour tout le lot.
+ */
+export type SearchOptions = {
+  withNextSlots?: boolean;
+  /** Nombre de créneaux conservés par prof. */
+  slotCount?: number;
+  /** Profondeur de la fenêtre, en jours. */
+  slotDays?: number;
+  now?: Date;
 };
 
 export type SearchResponse = {
@@ -78,7 +108,8 @@ export async function resolveInstrument(term: string) {
 }
 
 export async function searchTeachers(
-  filters: SearchFilters
+  filters: SearchFilters,
+  options: SearchOptions = {}
 ): Promise<SearchResponse> {
   const matched = filters.instrument
     ? await resolveInstrument(filters.instrument)
@@ -165,7 +196,9 @@ export async function searchTeachers(
       trialLessonOffered: true,
       user: { select: { name: true, image: true } },
       instruments: {
-        select: { instrument: { select: { slug: true, name: true } } },
+        select: {
+          instrument: { select: { slug: true, name: true, family: true } },
+        },
       },
     },
   });
@@ -176,12 +209,27 @@ export async function searchTeachers(
     .map((id) => byId.get(id))
     .filter((row): row is (typeof page)[number] => row !== undefined);
 
+  // Une seule passe pour toute la page : `getNextSlotsForTeachers` fait ses
+  // trois requêtes pour le lot entier, là où un appel par prof en ferait
+  // soixante sur une page de vingt.
+  const slotsByTeacher = options.withNextSlots
+    ? await getNextSlotsForTeachers(
+        rows.map((row) => row.id),
+        {
+          count: options.slotCount ?? 3,
+          days: options.slotDays ?? 14,
+          now: options.now ?? new Date(),
+        }
+      )
+    : null;
+
   return {
     total,
     matchedInstrument: matched
       ? { slug: matched.slug, name: matched.name }
       : null,
     results: rows.map((row) => ({
+      id: row.id,
       slug: row.slug,
       name: row.user.name,
       image: row.user.image,
@@ -194,15 +242,55 @@ export async function searchTeachers(
       trialLessonOffered: row.trialLessonOffered,
       instruments: row.instruments.map((i) => i.instrument),
       rating: ratings.get(row.id) ?? EMPTY_SUMMARY,
+      nextSlots: slotsByTeacher?.get(row.id) ?? null,
     })),
   };
 }
 
-/** Instruments réellement enseignés par au moins un prof visible. */
-export async function getSearchableInstruments() {
-  return prisma.instrument.findMany({
-    where: { teachers: { some: { teacher: visibleTeacherWhere(new Date()) } } },
-    select: { slug: true, name: true, family: true },
-    orderBy: { name: "asc" },
-  });
+export type SearchableInstrument = {
+  slug: string;
+  name: string;
+  family: InstrumentFamily;
+  /** Nombre de profs **visibles** qui l'enseignent. */
+  teacherCount: number;
+};
+
+/**
+ * Instruments réellement enseignés par au moins un prof visible, avec le
+ * nombre de profs par instrument.
+ *
+ * Le compte passe par un `groupBy` sur la table de liaison filtrée par
+ * `visibleTeacherWhere`, et non par un `_count` de la relation : celui-ci
+ * compterait aussi les brouillons et les abonnements échus, et annoncerait donc
+ * plus de profs que la recherche n'en rendra — le pire décompte possible dans
+ * un filtre.
+ */
+export async function getSearchableInstruments(): Promise<
+  SearchableInstrument[]
+> {
+  const where = visibleTeacherWhere(new Date());
+
+  const [instruments, counts] = await Promise.all([
+    prisma.instrument.findMany({
+      where: { teachers: { some: { teacher: where } } },
+      select: { id: true, slug: true, name: true, family: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.teacherInstrument.groupBy({
+      by: ["instrumentId"],
+      where: { teacher: where },
+      _count: { teacherId: true },
+    }),
+  ]);
+
+  const byId = new Map(
+    counts.map((row) => [row.instrumentId, row._count.teacherId])
+  );
+
+  return instruments.map((instrument) => ({
+    slug: instrument.slug,
+    name: instrument.name,
+    family: instrument.family,
+    teacherCount: byId.get(instrument.id) ?? 0,
+  }));
 }

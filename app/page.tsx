@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import type { InstrumentFamily } from "@prisma/client";
-import { ArrowUpRight, MapPin } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 
-import { FamilyIcon } from "@/components/family-icon";
+import { Row, RowList, SectionTitle } from "@/components/editorial";
 import { HeroSearch } from "@/components/hero-search";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Spotlight } from "@/components/spotlight";
+import { TeacherAvatar } from "@/components/teacher-result-list";
 import prisma from "@/lib/prisma";
 import {
   FAMILY_LABELS,
@@ -22,6 +23,7 @@ import {
   organizationSchema,
   websiteSchema,
 } from "@/lib/seo/structured-data";
+import { formatSlotShort } from "@/lib/teacher/next-slots";
 import { visibleTeacherWhere } from "@/lib/teacher/visibility";
 import { cn } from "@/lib/utils";
 
@@ -37,24 +39,23 @@ export const metadata: Metadata = {
  * Page d'accueil.
  *
  * Server Component : c'est la porte d'entrée du trafic de recherche, elle doit
- * être lisible sans JavaScript. Elle n'est plus l'écran de connexion — celui-ci
- * vit désormais sur /connexion.
+ * être lisible sans JavaScript. Les deux seuls îlots clients sont `HeroSearch`
+ * (la barre de recherche) et `Spotlight` (aucune feuille de style ne sait où
+ * se trouve le curseur) — tout le contenu reste rendu par le serveur.
  *
- * Parti pris graphique : **la portée structure la page, le séquenceur l'anime**.
- * Cinq lignes en filet ouvrent l'accroche et reviennent en négatif sur le bloc
- * prof ; une tête de lecture les balaie en boucle et allume chaque note à son
- * passage. Tout est en CSS (`globals.css`, section « Mouvement ») : rien à
- * charger, rien à hydrater, et la page reste entièrement rendue par le serveur.
- * Le seul îlot client est `Spotlight`, parce qu'aucune feuille de style ne sait
- * où se trouve le curseur.
+ * L'accroche est celle d'avant la refonte de septembre 2026, à la demande du
+ * fondateur : barre de recherche à deux champs et médaillon animé (anneau
+ * doré, sceau qui tourne, note qui bat la mesure — `globals.css`, section
+ * « Mouvement »). Le reste de la page vient de la refonte : profs avec leur
+ * prochain créneau, répertoire par famille, trois temps, bandeau prof.
  *
  * La couleur ne décore pas, elle **nomme une famille d'instruments** (voir
  * `lib/instruments/family.ts`). Les notes posées sur la portée sont exactement
  * les familles du répertoire plus bas : le lecteur apprend la correspondance en
  * descendant la page, sans légende.
  *
- * Les instruments et les villes affichés viennent de la base et ne listent que
- * ce qui est réellement enseigné : des liens vers des recherches vides
+ * Les instruments, les villes et les profs affichés viennent de la base et ne
+ * listent que ce qui existe réellement : des liens vers des recherches vides
  * feraient fuir autant les visiteurs que les moteurs.
  */
 
@@ -84,14 +85,7 @@ const BEAM_THICKNESS = 4;
  */
 const SEQUENCE_SECONDS = 7;
 
-/**
- * Battue du médaillon.
- *
- * Un tempo lent, proche d'un andante : la note bat la mesure sans virer au
- * clignotant. La note et les ondes qui s'en échappent le partagent via
- * `--beat` — même procédé que `--sequence` sur la portée, si bien que les deux
- * ne peuvent pas se désynchroniser.
- */
+/** Battue du médaillon de l'accroche (voir `.m-beat` dans globals.css). */
 const BEAT_SECONDS = 0.82;
 
 /** Dégradés en style inline : en classe arbitraire, Tailwind découpe la valeur
@@ -99,20 +93,32 @@ const BEAT_SECONDS = 0.82;
 const staffLines = (color: string) =>
   `repeating-linear-gradient(to bottom, ${color} 0, ${color} 1px, transparent 1px, transparent ${STAFF_GAP}px)`;
 
+/**
+ * Les trois temps.
+ *
+ * Le troisième dit ce qui distingue SiNote et ce qu'aucune autre page ne dira à
+ * un élève au bon moment : le cours se règle au prof, hors plateforme.
+ */
 const STEPS = [
   {
-    title: "Trouvez un prof",
-    text: "Filtrez par instrument, par ville, ou cherchez un cours en visio.",
+    title: "Trouvez votre professeur",
+    text: "Filtrez par instrument, par ville, ou cherchez un cours en visio. Chaque fiche montre les disponibilités réelles du prof.",
   },
   {
     title: "Choisissez un créneau",
-    text: "Vous voyez ses disponibilités réelles et vous envoyez une demande.",
+    text: "Vous voyez son agenda et vous envoyez votre demande. Il la confirme, et vous êtes prévenu par e-mail.",
   },
   {
     title: "Prenez votre cours",
-    text: "Le prof confirme, vous convenez des détails, et c'est parti.",
+    text: "Vous réglez le professeur directement : aucun paiement en ligne, et aucune commission prélevée sur le cours.",
   },
 ];
+
+/** Profondeur de la fenêtre « disponible cette semaine ». */
+const AVAILABLE_DAYS = 7;
+
+/** Nombre de profs mis en avant — une liste, pas un annuaire. */
+const AVAILABLE_COUNT = 6;
 
 /** « 1 professeur », « 3 professeurs » — le pluriel se voit tout de suite. */
 function count(n: number, singular: string, plural = `${singular}s`) {
@@ -139,52 +145,75 @@ const reveal = (index: number): CSSProperties =>
 export default async function HomePage() {
   const where = visibleTeacherWhere(new Date());
 
-  const [instruments, catalogue, cities, teacherCount, featuredResp] = await Promise.all([
-    // Instruments effectivement enseignés, les plus représentés d'abord. La
-    // limite dépasse le catalogue : le compteur affiché serait faux si la
-    // requête tronquait.
-    prisma.instrument.findMany({
-      where: { teachers: { some: { teacher: where } } },
-      select: {
-        slug: true,
-        name: true,
-        family: true,
-        _count: { select: { teachers: true } },
-      },
-      orderBy: { teachers: { _count: "desc" } },
-      take: 60,
-    }),
-    // Le catalogue entier, pour le répertoire : chaque discipline a sa page
-    // /cours/* (avec FAQ), qui doit rester atteignable même quand aucun prof
-    // ne l'enseigne encore. Sans ça, une plateforme sans prof visible n'avait
-    // plus un seul lien d'instrument sur sa page d'accueil.
-    prisma.instrument.findMany({
-      select: { slug: true, name: true, family: true },
-      orderBy: { name: "asc" },
-      take: 60,
-    }),
-    prisma.teacherProfile.groupBy({
-      by: ["city"],
-      where: { ...where, city: { not: null } },
-      _count: { city: true },
-      orderBy: { _count: { city: "desc" } },
-      take: 12,
-    }),
-    prisma.teacherProfile.count({ where }),
-    // Profs en vedette : les mieux classés (moyenne bayésienne), tête de liste.
-    // On réutilise la recherche pour ne pas dupliquer la logique de visibilité
-    // et de note.
-    searchTeachers({
-      instrument: null,
-      city: null,
-      mode: null,
-      maxRateCents: null,
-      trialOnly: false,
-      page: 1,
-    }),
-  ]);
+  const [instruments, catalogue, cities, teacherCount, teacherResp] =
+    await Promise.all([
+      // Instruments effectivement enseignés, les plus représentés d'abord. La
+      // limite dépasse le catalogue : le compteur affiché serait faux si la
+      // requête tronquait.
+      prisma.instrument.findMany({
+        where: { teachers: { some: { teacher: where } } },
+        select: { slug: true, name: true, family: true },
+        orderBy: { teachers: { _count: "desc" } },
+        take: 60,
+      }),
+      // Le catalogue entier, pour le répertoire : chaque discipline a sa page
+      // /cours/* (avec FAQ), qui doit rester atteignable même quand aucun prof
+      // ne l'enseigne encore. Sans ça, une plateforme sans prof visible n'avait
+      // plus un seul lien d'instrument sur sa page d'accueil.
+      prisma.instrument.findMany({
+        select: { slug: true, name: true, family: true },
+        orderBy: { name: "asc" },
+        take: 60,
+      }),
+      prisma.teacherProfile.groupBy({
+        by: ["city"],
+        where: { ...where, city: { not: null } },
+        _count: { city: true },
+        orderBy: { _count: { city: "desc" } },
+        take: 12,
+      }),
+      prisma.teacherProfile.count({ where }),
+      // Profs mis en avant. On réutilise la recherche pour ne pas dupliquer la
+      // logique de visibilité et de note, et on lui demande le prochain créneau
+      // de chacun — c'est lui qui décide ensuite de l'ordre.
+      searchTeachers(
+        {
+          instrument: null,
+          city: null,
+          mode: null,
+          maxRateCents: null,
+          trialOnly: false,
+          page: 1,
+        },
+        { withNextSlots: true, slotCount: 1, slotDays: AVAILABLE_DAYS }
+      ),
+    ]);
 
-  const featured = featuredResp.results.slice(0, 3);
+  /**
+   * Ordre de la vitrine : **le prochain créneau d'abord**, le classement
+   * ensuite.
+   *
+   * Un élève qui arrive sur l'accueil cherche un cours, pas un annuaire : un
+   * prof libre jeudi vaut mieux qu'un prof mieux noté mais complet. Les profs
+   * sans créneau dans la fenêtre ne sont donc pas triés au fond de la liste,
+   * ils en sortent — et si personne n'est libre, la section change de titre
+   * plutôt que d'annoncer une disponibilité qui n'existe pas.
+   */
+  const available = teacherResp.results
+    .filter((teacher) => (teacher.nextSlots?.slots.length ?? 0) > 0)
+    .sort(
+      (a, b) =>
+        a.nextSlots!.slots[0].startsAt.getTime() -
+        b.nextSlots!.slots[0].startsAt.getTime()
+    )
+    .slice(0, AVAILABLE_COUNT);
+
+  // Repli : personne de libre sous sept jours, mais des profs existent. On les
+  // montre sans badge — annoncer « disponibles cette semaine » serait faux.
+  const showcase =
+    available.length > 0
+      ? available
+      : teacherResp.results.slice(0, AVAILABLE_COUNT);
 
   const tally = [
     teacherCount > 0 ? count(teacherCount, "professeur") : null,
@@ -396,212 +425,189 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Professeurs en vedette : les mieux notés, en cartes. */}
-        {featured.length > 0 ? (
+        {/* Professeurs. Le prochain créneau est l'information qui décide, donc
+            elle est dans la ligne et non derrière un clic. */}
+        {showcase.length > 0 ? (
           <section className="border-t border-border">
-            <div className="mx-auto max-w-6xl px-4 py-16">
+            <div className="mx-auto max-w-5xl px-4 py-16">
               <div className="m-reveal">
-                <SectionHead>Professeurs en vedette</SectionHead>
+                <SectionTitle
+                  trailing={
+                    <Link
+                      href="/profs"
+                      className="shrink-0 text-sm font-normal normal-case tracking-normal text-muted underline-offset-4 hover:text-primary hover:underline"
+                    >
+                      Tous les profs →
+                    </Link>
+                  }
+                >
+                  {available.length > 0
+                    ? "Professeurs disponibles cette semaine"
+                    : "Nos professeurs"}
+                </SectionTitle>
               </div>
 
-              <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {featured.map((teacher, index) => (
-                  <div
-                    key={teacher.slug}
-                    className="m-reveal h-full"
-                    style={reveal(index)}
-                  >
-                    <FeaturedCard teacher={teacher} />
-                  </div>
+              <RowList className="mt-8">
+                {showcase.map((teacher) => (
+                  <ShowcaseRow key={teacher.slug} teacher={teacher} />
                 ))}
-              </div>
+              </RowList>
             </div>
           </section>
         ) : null}
 
-        {/* Répertoire : toutes les disciplines enseignées, groupées par famille,
-            chacune liée à sa page de cours. Section crawlable — c'est elle qui
-            fait circuler le référencement vers /cours/*, et le lecteur apprend
-            au passage la correspondance couleur → famille. */}
+        {/* Répertoire : tout le catalogue, groupé par famille, chaque
+            discipline liée à sa page de cours. Section crawlable — c'est elle
+            qui fait circuler le référencement vers /cours/*, et le lecteur y
+            apprend au passage la correspondance couleur → famille. */}
         {repertoire.length > 0 ? (
-          <section className="border-t border-border">
-            <div className="mx-auto max-w-6xl px-4 py-16">
+          <section className="border-t border-border bg-surface">
+            <div className="mx-auto max-w-5xl px-4 py-16">
               <div className="m-reveal">
-                <SectionHead>Toutes les disciplines</SectionHead>
+                <SectionTitle>Le répertoire</SectionTitle>
               </div>
 
-              {/* Tuiles par famille : une icône monoline dans la couleur de la
-                  famille illustre chaque groupe, les cours dessous pointent vers
-                  /cours/*. La couleur nomme la famille, l'icône lui donne un
-                  visage — le lecteur apprend la correspondance en descendant. */}
-              <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="mt-8 grid gap-x-8 gap-y-9 sm:grid-cols-2 lg:grid-cols-4">
                 {repertoire.map((group, index) => (
                   <div
                     key={group.family}
-                    className="m-reveal flex flex-col gap-4 rounded-[var(--radius)] border border-border bg-background p-6 transition-colors hover:border-primary/40"
+                    className="m-reveal border-t border-border pt-4"
                     style={reveal(index)}
                   >
-                    <div className="flex items-center gap-3">
-                      <FamilyIcon family={group.family} />
-                      <div>
-                        <h3 className="font-display text-xl font-medium leading-none text-foreground">
-                          {FAMILY_LABELS[group.family]}
-                        </h3>
-                        <p className="mt-1 text-xs text-subtle">
-                          {group.items.length} discipline
-                          {group.items.length > 1 ? "s" : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                      {group.items.map((item) => (
-                        <Link
-                          key={item.slug}
-                          href={`/cours/${item.slug}`}
-                          className={cn(
-                            "text-sm underline-offset-4 transition-colors hover:text-primary hover:underline",
-                            taught.has(item.slug)
-                              ? "font-medium text-foreground"
-                              : "text-muted"
-                          )}
-                        >
-                          {item.name}
-                        </Link>
+                    <p className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "h-2 w-2 shrink-0 rounded-full",
+                          FAMILY_STYLES[group.family].dot
+                        )}
+                      />
+                      <span className="font-display text-lg font-medium text-foreground">
+                        {FAMILY_LABELS[group.family]}
+                      </span>
+                    </p>
+
+                    <p className="mt-2.5 text-sm leading-relaxed">
+                      {group.items.map((item, position) => (
+                        <span key={item.slug}>
+                          {position > 0 ? (
+                            <span aria-hidden className="text-subtle">
+                              {" · "}
+                            </span>
+                          ) : null}
+                          <Link
+                            href={`/cours/${item.slug}`}
+                            className={cn(
+                              "underline-offset-4 transition-colors hover:text-primary hover:underline",
+                              taught.has(item.slug)
+                                ? "font-semibold text-foreground"
+                                : "text-muted"
+                            )}
+                          >
+                            {item.name}
+                          </Link>
+                        </span>
                       ))}
-                    </div>
+                    </p>
                   </div>
                 ))}
               </div>
-
-              {cities.length > 0 ? (
-                <div className="m-reveal mt-12">
-                  <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-foreground">
-                    <span aria-hidden className="text-accent">
-                      ❧
-                    </span>
-                    Par ville
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-2.5">
-                    {cities.map((entry) =>
-                      entry.city ? (
-                        <Link
-                          key={entry.city}
-                          href={`/profs?ville=${encodeURIComponent(entry.city)}`}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-4 py-2 text-sm text-foreground transition-colors hover:border-primary hover:text-primary"
-                        >
-                          <MapPin className="h-3.5 w-3.5 text-accent" />
-                          {entry.city}
-                        </Link>
-                      ) : null
-                    )}
-                  </div>
-                </div>
-              ) : null}
             </div>
           </section>
         ) : null}
 
-        {/* Fonctionnement. Trois mesures séparées par des barres : des filets
-            font le même travail qu'une carte, sans la boîte. */}
-        <section className="border-t border-border bg-surface">
+        {/* Fonctionnement. Trois temps chiffrés en Cormorant italique doré :
+            le filet au-dessus fait le travail d'une carte, sans la boîte. */}
+        <section className="border-t border-border">
           <div className="mx-auto max-w-5xl px-4 py-16">
             <div className="m-reveal">
-              <SectionHead>Comment ça marche</SectionHead>
+              <SectionTitle>Comment ça marche</SectionTitle>
             </div>
 
-            {/* Filets, pas de boîte : un trait au-dessus et au-dessous, une
-                barre de mesure entre les trois temps. */}
-            <ol className="mt-10 grid border-y border-border sm:grid-cols-3 sm:divide-x sm:divide-border">
+            <ol className="mt-8 grid gap-8 sm:grid-cols-3">
               {STEPS.map((step, index) => (
                 <li
                   key={step.title}
-                  className="m-reveal border-b border-border py-7 sm:border-b-0 sm:px-7 sm:first:pl-0 sm:last:pr-0"
+                  className="m-reveal border-t border-border pt-5"
                   style={reveal(index)}
                 >
                   <span
                     aria-hidden
-                    className="block font-display text-5xl font-extrabold leading-none text-primary"
+                    className="block font-display text-3xl font-semibold italic leading-none text-accent"
                   >
-                    {index + 1}
+                    {index + 1}.
                   </span>
-                  <h3 className="mt-4 text-lg">{step.title}</h3>
+                  <h3 className="mt-3 font-display text-xl font-medium text-foreground">
+                    {step.title}
+                  </h3>
                   <p className="mt-2 text-sm leading-relaxed text-muted">
                     {step.text}
                   </p>
                 </li>
               ))}
             </ol>
-
-            <p className="m-reveal mt-8 text-sm text-muted">
-              Le paiement des cours se fait directement entre vous et votre
-              prof, hors plateforme — la plateforme ne prend aucune commission.
-            </p>
           </div>
         </section>
 
-        {/* Côté prof. Encre pleine : la page se referme sur un contraste franc
+        {/* Côté prof. Bleu plein : la page se referme sur un contraste franc
             plutôt que sur une énième carte claire. */}
         <section>
-          <Spotlight className="relative overflow-hidden bg-foreground text-background">
+          <Spotlight className="relative overflow-hidden bg-sidebar text-sidebar-foreground">
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0 transition-opacity duration-500"
               style={{
                 opacity: "var(--spot-opacity, 0)",
                 background:
-                  "radial-gradient(26rem 26rem at var(--spot-x, 50%) var(--spot-y, 50%), rgb(198 162 96 / 0.3), transparent 70%)",
+                  "radial-gradient(26rem 26rem at var(--spot-x, 50%) var(--spot-y, 50%), rgb(169 127 56 / 0.28), transparent 70%)",
               }}
             />
 
             <div aria-hidden className="absolute inset-x-0 top-0">
               <Staff
-                line="rgb(255 255 255 / 0.22)"
-                head="rgb(198 162 96 / 0.9)"
+                line="rgb(255 255 255 / 0.18)"
+                head="rgb(236 224 198 / 0.9)"
               />
             </div>
 
             <div className="relative mx-auto max-w-5xl px-4 py-20">
-              <p className="flex items-center gap-2 text-xs uppercase tracking-[0.22em]">
-                <span aria-hidden className="text-base text-accent">❧</span>
-                <span className="text-accent">Vous enseignez ?</span>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
+                Vous enseignez ?
               </p>
-              {/* Pas de largeur maximale : elle reprenait la main sur le saut de
-                  ligne explicite et laissait « agenda, » seul sur sa ligne. */}
+
               <h2
-                className="mt-4 font-display font-extrabold uppercase leading-[0.92] tracking-[-0.03em]"
-                style={{ fontSize: "clamp(1.875rem, 4.6vw, 3rem)" }}
+                className="mt-5 max-w-2xl font-display font-semibold leading-[1.05]"
+                style={{ fontSize: "clamp(1.875rem, 4.4vw, 3rem)" }}
               >
-                Remplissez votre agenda,
-                <br />
-                gardez vos tarifs
+                Une fiche, un agenda, des élèves qui vous trouvent.
               </h2>
-              <p className="mt-6 max-w-xl leading-relaxed text-white/65">
+
+              <p className="mt-6 max-w-xl leading-relaxed text-sidebar-muted">
                 Publiez votre fiche, définissez vos disponibilités récurrentes
                 et recevez des demandes de cours. Un abonnement mensuel, et
                 aucune commission sur ce que vous facturez.
               </p>
 
               {/* Bouton en négatif écrit à la main : les variantes de `Button`
-                  sont réglées pour un fond clair, aucune ne tient sur l'encre. */}
+                  sont réglées pour un fond clair, aucune ne tient sur le bleu. */}
               <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
                 <Link
-                  href="/connexion"
-                  className="inline-flex h-12 items-center gap-2 rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
+                  href="/enseigner"
+                  className="inline-flex min-h-12 items-center gap-2 rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
                 >
-                  Créer ma fiche
+                  Découvrir l’espace prof
                   <ArrowUpRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="/enseigner"
-                  className="text-sm font-medium text-white/80 underline-offset-4 hover:text-white hover:underline"
+                  href="/connexion"
+                  className="inline-flex min-h-12 items-center text-sm font-medium text-sidebar-foreground/80 underline-offset-4 hover:text-sidebar-foreground hover:underline"
                 >
-                  En savoir plus →
+                  Créer ma fiche →
                 </Link>
               </div>
             </div>
           </Spotlight>
         </section>
-
       </main>
       <SiteFooter />
     </>
@@ -609,91 +615,68 @@ export default async function HomePage() {
 }
 
 /**
- * En-tête de section façon programme de concert : un fleuron doré, le titre en
- * Cormorant, puis un filet qui file jusqu'au bord.
+ * Un prof de la vitrine, en ligne de filet.
+ *
+ * Toute la ligne est un seul lien : rien ici n'est cliquable séparément — le
+ * badge de créneau annonce la disponibilité, il ne la réserve pas.
  */
-function SectionHead({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span aria-hidden className="text-xl leading-none text-accent">
-        ❧
-      </span>
-      <h2 className="text-3xl sm:text-4xl">{children}</h2>
-      <span aria-hidden className="h-px flex-1 bg-border" />
-    </div>
-  );
-}
-
-/**
- * Carte d'un prof en vedette. La photo si elle existe, sinon un sceau bleu
- * gravé à l'initiale ; nom en Cormorant, instruments en italique, note dorée.
- */
-function FeaturedCard({ teacher }: { teacher: SearchResult }) {
-  const name = teacher.name ?? "Professeur";
-  const place = teacher.city ?? (teacher.teachesOnline ? "En visio" : null);
+function ShowcaseRow({ teacher }: { teacher: SearchResult }) {
+  const name = teacher.name ?? "Prof de musique";
+  const next = teacher.nextSlots?.slots[0] ?? null;
 
   return (
-    <Link
+    <Row
       href={`/profs/${teacher.slug}`}
-      className="group flex h-full flex-col rounded-xl border border-border bg-elevated p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-accent hover:shadow-lg"
-    >
-      <div className="flex items-center gap-3">
-        {teacher.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={teacher.image}
-            alt=""
-            className="h-14 w-14 shrink-0 rounded-full border border-border object-cover"
-          />
-        ) : (
-          <span
-            aria-hidden
-            className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-accent-soft font-display text-xl font-semibold"
-            style={{
-              background:
-                "radial-gradient(circle at 50% 38%, #1b4a6e, #123551 72%)",
-              color: "#c6a260",
-            }}
-          >
-            {name.charAt(0).toUpperCase()}
-          </span>
-        )}
-        <div className="min-w-0">
-          <p className="truncate font-display text-xl font-semibold leading-tight text-primary">
-            {name}
-          </p>
-          {place ? (
-            <p className="truncate text-xs uppercase tracking-[0.12em] text-subtle">
-              {place}
+      main={
+        <div className="flex items-start gap-4">
+          <TeacherAvatar image={teacher.image} name={name} />
+
+          <div className="min-w-0">
+            <p className="font-display text-xl font-medium leading-tight text-foreground">
+              {name}
             </p>
-          ) : null}
+
+            {teacher.instruments.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {teacher.instruments.slice(0, 3).map((instrument) => (
+                  <span
+                    key={instrument.slug}
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                      FAMILY_STYLES[instrument.family].chipStatic
+                    )}
+                  >
+                    {instrument.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            {next && teacher.nextSlots ? (
+              <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success" />
+                {`Prochain créneau ${formatSlotShort(
+                  next.startsAt,
+                  teacher.nextSlots.timezone
+                )}`}
+              </p>
+            ) : teacher.city ? (
+              <p className="mt-2.5 text-sm text-muted">{teacher.city}</p>
+            ) : null}
+          </div>
         </div>
-      </div>
-
-      {teacher.instruments.length > 0 ? (
-        <p className="mt-3 line-clamp-2 font-display text-lg italic leading-snug text-foreground">
-          {teacher.instruments
-            .slice(0, 3)
-            .map((instrument) => instrument.name)
-            .join(" · ")}
-        </p>
-      ) : null}
-
-      <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
-        <span className="flex items-center gap-1 text-sm text-muted">
-          <span className="text-accent">★</span>
-          {teacher.rating.average !== null
-            ? `${teacher.rating.average.toFixed(1).replace(".", ",")} (${teacher.rating.count})`
-            : "Nouveau"}
-        </span>
-        {teacher.hourlyRateCents !== null ? (
-          <span className="font-display text-lg font-semibold text-primary">
-            {Math.round(teacher.hourlyRateCents / 100)} €
-            <span className="font-sans text-xs font-normal text-muted">/h</span>
-          </span>
-        ) : null}
-      </div>
-    </Link>
+      }
+      meta={
+        teacher.hourlyRateCents !== null ? (
+          <p className="font-display text-2xl font-semibold leading-none text-primary">
+            {`${Math.round(teacher.hourlyRateCents / 100)} €`}
+            <span className="block pt-1 font-sans text-xs font-normal text-muted">
+              par heure
+            </span>
+          </p>
+        ) : null
+      }
+    />
   );
 }
 
@@ -724,7 +707,7 @@ function FeaturedCard({ teacher }: { teacher: SearchResult }) {
  */
 function Staff({
   families = [],
-  line = "var(--border)",
+  line = "var(--border-strong)",
   head = "var(--primary)",
   notation = "var(--muted)",
 }: {

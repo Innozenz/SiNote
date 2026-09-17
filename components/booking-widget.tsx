@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -24,16 +29,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { civilDateKeyInZone, localMinutesInZone } from "@/lib/availability/zone";
 import {
   groupSlotsByPeriod,
   PERIOD_LABELS,
   type DayPeriod,
 } from "@/lib/bookings/day-period";
 import { postJson, type Failure } from "@/lib/http/failure";
+import { formatSlotLong } from "@/lib/teacher/slot-label";
 import { cn } from "@/lib/utils";
 
 type Slot = { startsAt: string; endsAt: string };
 type Instrument = { slug: string; name: string };
+
+/** Créneau mis en avant, déjà mis en forme côté serveur. */
+export type InitialNextSlot = { startsAt: string; label: string };
 
 const DAY_MS = 86_400_000;
 
@@ -51,17 +61,35 @@ const PERIOD_ICONS: Record<DayPeriod, typeof Sun> = {
  * rendus au build ni mis en cache, ils changent à chaque réservation. Ils sont
  * donc chargés ici, à l'ouverture de la page, pendant que le reste de la fiche
  * reste statique et indexable.
+ *
+ * Trois choses structurent l'écran, dans cet ordre :
+ *
+ * 1. **Le prochain créneau**, mis en avant et réservable d'un clic. Sa valeur
+ *    initiale vient du serveur (`initialNextSlot`) : elle est donc dans le HTML
+ *    — lisible par un moteur, et affichée avant même que le fetch réponde.
+ * 2. **La bande des sept jours**, avec le nombre de créneaux sous chaque jour.
+ *    Un jour vide est grisé et inerte : un bouton qui n'ouvre rien est pire
+ *    qu'un bouton absent.
+ * 3. **Les créneaux du jour choisi**, groupés par plage (matin / après-midi /
+ *    soir, via `lib/bookings/day-period.ts`) et **limités aux heures rondes**
+ *    tant que l'élève ne demande pas les départs intermédiaires. Une grille à
+ *    quinze minutes produit quatre fois trop de pastilles pour être lue, et
+ *    c'est l'heure ronde que l'on cherche d'abord.
  */
 export function BookingWidget({
   teacherSlug,
   instruments,
   timezone,
+  granularityMin,
   trialOffered,
   viewer,
+  initialNextSlot = null,
 }: {
   teacherSlug: string;
   instruments: Instrument[];
   timezone: string;
+  /** Pas de la grille du prof — décide s'il existe des départs intermédiaires. */
+  granularityMin: number;
   trialOffered: boolean;
   /**
    * État du visiteur, décidé côté serveur : `guest` (pas connecté),
@@ -70,11 +98,19 @@ export function BookingWidget({
    * clic, plutôt que de laisser l'élève buter sur une erreur.
    */
   viewer: "guest" | "incomplete" | "student";
+  /**
+   * Prochain créneau calculé par la page serveur. Affiché tel quel jusqu'à ce
+   * que le balayage client le remplace — c'est ce qui met la disponibilité dans
+   * le HTML rendu, et pas seulement après hydratation.
+   */
+  initialNextSlot?: InitialNextSlot | null;
 }) {
   const router = useRouter();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [showQuarters, setShowQuarters] = useState(false);
   const [instrument, setInstrument] = useState(instruments[0]?.slug ?? "");
   const [isTrial, setIsTrial] = useState(false);
   const [message, setMessage] = useState("");
@@ -86,14 +122,20 @@ export function BookingWidget({
   // disponible (ou restauré une sélection). Tant que non, on n'affiche que le
   // squelette — inutile de charger la semaine courante pour la remplacer aussitôt.
   const [ready, setReady] = useState(false);
-  // Premier créneau trouvé par le balayage à 62 jours : quand une semaine est
-  // vide, on peut dire *quand* est le prochain plutôt que « rien cette
-  // semaine » — qui laissait l'élève feuilleter à l'aveugle.
-  const [nextSlotAt, setNextSlotAt] = useState<string | null>(null);
+  // Premier créneau trouvé par le balayage à 62 jours. Part de la valeur
+  // calculée par le serveur : le bloc est donc rempli dès le premier rendu.
+  const [nextSlot, setNextSlot] = useState<InitialNextSlot | null>(
+    initialNextSlot
+  );
   const [scanned, setScanned] = useState(false);
   // La note de fuseau n'a de sens que si celui du visiteur diffère. Calculée
   // après montage : le serveur ne connaît pas le fuseau du navigateur.
   const [foreignZone, setForeignZone] = useState(false);
+
+  // Créneau à sélectionner dès que la semaine qui le contient est chargée —
+  // c'est ce qui fait que « Réserver » sur le bloc du prochain créneau atterrit
+  // sur le bon jour, sélection faite.
+  const pendingSelect = useRef<string | null>(null);
 
   useEffect(() => {
     try {
@@ -129,7 +171,7 @@ export function BookingWidget({
           weekStart?: string;
         };
         if (saved.weekStart) setWeekStart(new Date(saved.weekStart));
-        if (saved.selected) setSelected(saved.selected);
+        if (saved.selected) pendingSelect.current = saved.selected;
         if (saved.instrument) setInstrument(saved.instrument);
         if (typeof saved.isTrial === "boolean") setIsTrial(saved.isTrial);
         if (saved.message) setMessage(saved.message);
@@ -157,15 +199,21 @@ export function BookingWidget({
         const earliest = result.data.slots.reduce((a, b) =>
           a.startsAt <= b.startsAt ? a : b
         );
-        setNextSlotAt(earliest.startsAt);
+        setNextSlot({
+          startsAt: earliest.startsAt,
+          label: formatSlotLong(new Date(earliest.startsAt), timezone),
+        });
         setWeekStart(startOfWeek(new Date(earliest.startsAt)));
       }
-      if (result.ok) setScanned(true);
-      // Créneaux introuvables ou requête en échec : on reste sur la semaine
-      // courante, l'affichage hebdo gère ensuite le vide / la relance.
+      // Balayage concluant et vide : le prochain créneau annoncé par le serveur
+      // n'existe plus (il vient d'être pris). Le taire vaut mieux que le mentir.
+      if (result.ok) {
+        setScanned(true);
+        if (result.data.slots.length === 0) setNextSlot(null);
+      }
       setReady(true);
     })();
-  }, [storageKey, teacherSlug]);
+  }, [storageKey, teacherSlug, timezone]);
 
   const persistSelection = () => {
     if (!selected) return;
@@ -204,7 +252,16 @@ export function BookingWidget({
     }
 
     setSlots(result.data.slots);
-  }, [teacherSlug, weekStart]);
+
+    // Créneau visé (bloc « Prochain créneau », ou retour de connexion) : il
+    // n'est sélectionnable qu'une fois sa semaine chargée.
+    const wanted = pendingSelect.current;
+    pendingSelect.current = null;
+    if (wanted && result.data.slots.some((slot) => slot.startsAt === wanted)) {
+      setSelected(wanted);
+      setSelectedDay(civilDateKeyInZone(new Date(wanted), timezone));
+    }
+  }, [teacherSlug, timezone, weekStart]);
 
   useEffect(() => {
     // On attend que la semaine initiale soit fixée (recherche du premier
@@ -212,6 +269,50 @@ export function BookingWidget({
     // courante puis la remplacer.
     if (ready) loadSlots();
   }, [loadSlots, ready]);
+
+  const byDay = useMemo(
+    () =>
+      groupSlotsByPeriod(slots ?? [], (slot) => new Date(slot.startsAt), timezone),
+    [slots, timezone]
+  );
+
+  const dayMap = useMemo(
+    () => new Map(byDay.map((day) => [day.date, day])),
+    [byDay]
+  );
+
+  // Les sept jours civils de la semaine affichée, **dans le fuseau du prof** :
+  // c'est dans ce fuseau que les créneaux sont regroupés, et une bande calée
+  // sur le fuseau du visiteur décalerait les compteurs d'un jour.
+  const dayKeys = useMemo(() => {
+    const first = civilDateKeyInZone(weekStart, timezone);
+    return Array.from({ length: 7 }, (_, index) => addDayKey(first, index));
+  }, [weekStart, timezone]);
+
+  const countFor = useCallback(
+    (key: string) =>
+      dayMap
+        .get(key)
+        ?.periods.reduce((total, period) => total + period.slots.length, 0) ?? 0,
+    [dayMap]
+  );
+
+  // Jour affiché : celui déjà choisi s'il a encore des créneaux, sinon le
+  // premier de la semaine qui en a. Conserver le choix évite qu'un simple
+  // rechargement (après une réservation, par exemple) ramène l'élève au lundi.
+  useEffect(() => {
+    if (slots === null) return;
+    setSelectedDay((current) =>
+      current && countFor(current) > 0
+        ? current
+        : (dayKeys.find((key) => countFor(key) > 0) ?? null)
+    );
+  }, [slots, dayKeys, countFor]);
+
+  const isRoundHour = useCallback(
+    (slot: Slot) => localMinutesInZone(new Date(slot.startsAt), timezone) % 60 === 0,
+    [timezone]
+  );
 
   const book = async () => {
     if (!selected) return;
@@ -264,7 +365,7 @@ export function BookingWidget({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <Button asChild size="lg">
-            <Link href="/dashboard/cours">Voir mes cours</Link>
+            <Link href="/dashboard">Voir mes cours</Link>
           </Button>
           <button
             type="button"
@@ -283,27 +384,79 @@ export function BookingWidget({
     );
   }
 
-  const byDay = groupSlotsByPeriod(
-    slots ?? [],
-    (slot) => new Date(slot.startsAt),
-    timezone
-  );
+  const dayEntry = selectedDay ? dayMap.get(selectedDay) : undefined;
+
+  // Départs intermédiaires : n'existent que si la grille est plus fine qu'une
+  // heure. On ne masque les non-ronds que s'il reste des heures rondes à
+  // montrer — sinon un prof qui n'ouvre qu'à 9 h 15 aurait une journée vide.
+  const daySlots = dayEntry?.periods.flatMap((period) => period.slots) ?? [];
+  const hasQuarters =
+    granularityMin < 60 && daySlots.some((slot) => !isRoundHour(slot));
+  const hasRound = daySlots.some(isRoundHour);
+  const selectedIsQuarter = selected
+    ? localMinutesInZone(new Date(selected), timezone) % 60 !== 0
+    : false;
+  const showAll =
+    showQuarters || selectedIsQuarter || !hasQuarters || !hasRound;
 
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-5 w-5 text-primary" />
+      <CardHeader className="gap-3">
+        <div>
           <CardTitle>Réserver un cours</CardTitle>
+          <CardDescription>
+            {foreignZone
+              ? `Horaires affichés dans le fuseau du prof (${timezone}), pas dans le vôtre.`
+              : "Choisissez un créneau, puis envoyez votre demande."}
+          </CardDescription>
         </div>
-        <CardDescription>
-          {foreignZone
-            ? `Horaires affichés dans le fuseau du prof (${timezone}), pas dans le vôtre.`
-            : "Choisissez un créneau, puis envoyez votre demande."}
-        </CardDescription>
+
+        {/* Le prochain créneau, réservable sans parcourir la grille. Rendu dès
+            le serveur, donc présent dans le HTML. */}
+        {nextSlot ? (
+          <div className="rounded-[var(--radius-sm)] bg-primary-soft p-4">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-primary">
+              Prochain créneau
+            </p>
+            <p className="mt-1.5 font-display text-xl font-semibold leading-tight text-primary first-letter:uppercase">
+              {nextSlot.label}
+            </p>
+            <Button
+              size="sm"
+              className="mt-3 w-full"
+              onClick={() => {
+                const target = new Date(nextSlot.startsAt);
+                const week = startOfWeek(target);
+
+                if (week.getTime() === weekStart.getTime()) {
+                  setSelected(nextSlot.startsAt);
+                  setSelectedDay(civilDateKeyInZone(target, timezone));
+                } else {
+                  // La sélection attend que sa semaine soit chargée.
+                  pendingSelect.current = nextSlot.startsAt;
+                  setWeekStart(week);
+                }
+              }}
+            >
+              Réserver
+            </Button>
+          </div>
+        ) : null}
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
+        {/* Semaine et bande de jours **après montage seulement**.
+            `startOfWeek` lit l'horloge locale : celle du serveur au rendu, celle
+            du navigateur ensuite. Les deux peuvent tomber sur des lundis
+            différents (à quelques minutes de minuit, ou sur un serveur en UTC),
+            et React signalerait une divergence d'hydratation sur sept
+            étiquettes de jour. Le bloc « Prochain créneau » au-dessus, lui, est
+            calculé côté serveur et reste rendu dans le HTML — c'est lui qui
+            porte l'information pour les moteurs. */}
+        {!ready ? (
+          <SlotsSkeleton />
+        ) : (
+          <>
         {/* Navigation par semaine. Le libellé au centre dit *quelle* semaine
             est affichée : sans lui, le saut initial vers la première semaine
             disponible laissait l'élève sans repère. */}
@@ -313,7 +466,10 @@ export function BookingWidget({
             size="sm"
             aria-label="Semaine précédente"
             disabled={weekStart <= startOfWeek(new Date())}
-            onClick={() => setWeekStart(new Date(weekStart.getTime() - 7 * DAY_MS))}
+            onClick={() => {
+              setShowQuarters(false);
+              setWeekStart(new Date(weekStart.getTime() - 7 * DAY_MS));
+            }}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -324,10 +480,67 @@ export function BookingWidget({
             variant="ghost"
             size="sm"
             aria-label="Semaine suivante"
-            onClick={() => setWeekStart(new Date(weekStart.getTime() + 7 * DAY_MS))}
+            onClick={() => {
+              setShowQuarters(false);
+              setWeekStart(new Date(weekStart.getTime() + 7 * DAY_MS));
+            }}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
+        </div>
+
+        {/* La bande des sept jours. Le compteur sous chaque jour est ce qui
+            permet de choisir sans ouvrir : un jour à un créneau et un jour à
+            douze ne se valent pas. */}
+        <div className="grid grid-cols-7 gap-1">
+          {dayKeys.map((key) => {
+            const total = slots === null ? null : countFor(key);
+            const active = key === selectedDay;
+            const empty = total === 0;
+
+            return (
+              <button
+                key={key}
+                type="button"
+                disabled={empty}
+                aria-pressed={active}
+                aria-label={`${formatDayKey(key)} — ${
+                  total === null
+                    ? "chargement"
+                    : total === 0
+                      ? "aucun créneau"
+                      : `${total} créneau${total > 1 ? "x" : ""}`
+                }`}
+                onClick={() => {
+                  setSelectedDay(key);
+                  setShowQuarters(false);
+                }}
+                className={cn(
+                  "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-sm)] px-0.5 py-1.5 transition-colors",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : empty
+                      ? "text-subtle opacity-45"
+                      : "text-foreground hover:bg-surface"
+                )}
+              >
+                <span className="text-[0.625rem] leading-none first-letter:uppercase">
+                  {weekdayShort(key)}
+                </span>
+                <span className="font-display text-base font-semibold leading-none">
+                  {Number(key.slice(8, 10))}
+                </span>
+                <span
+                  className={cn(
+                    "text-[0.625rem] leading-none",
+                    active ? "text-primary-foreground/75" : "text-subtle"
+                  )}
+                >
+                  {total === null ? "·" : total === 0 ? "—" : total}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {slots === null ? (
@@ -342,65 +555,82 @@ export function BookingWidget({
               Réessayer
             </Button>
           </div>
-        ) : byDay.length === 0 ? (
+        ) : !dayEntry ? (
           <EmptyWeek
-            nextSlotAt={nextSlotAt}
+            nextSlotAt={nextSlot?.startsAt ?? null}
             scanned={scanned}
             weekStart={weekStart}
             timezone={timezone}
             onJump={(date) => setWeekStart(startOfWeek(date))}
           />
         ) : (
-          <div className="flex flex-col gap-5">
-            {byDay.map((day) => (
-              <div key={day.date}>
-                {/* `first-letter` et non `capitalize` : `capitalize` met une
-                    majuscule à chaque mot et écrivait « Lundi 3 Août », alors
-                    qu'en français le mois reste en minuscule. */}
-                <p className="mb-2.5 text-sm font-medium first-letter:uppercase">
-                  {formatDay(day.periods[0].slots[0].startsAt, timezone)}
-                </p>
+          <div className="flex flex-col gap-4">
+            {/* `first-letter` et non `capitalize` : `capitalize` met une
+                majuscule à chaque mot et écrivait « Lundi 3 Août », alors
+                qu'en français le mois reste en minuscule. */}
+            <p className="text-sm font-medium first-letter:uppercase">
+              {formatDayKey(dayEntry.date)}
+            </p>
 
-                <div className="flex flex-col gap-3">
-                  {day.periods.map(({ period, slots: periodSlots }) => {
-                    const Icon = PERIOD_ICONS[period];
+            {dayEntry.periods.map(({ period, slots: periodSlots }) => {
+              const shown = showAll
+                ? periodSlots
+                : periodSlots.filter(isRoundHour);
 
-                    return (
-                      // Le titre de plage est rendu même quand la journée n'en
-                      // compte qu'une : « Matin » seul dit que ce prof
-                      // n'enseigne que le matin ce jour-là, ce qui est
-                      // précisément l'information cherchée.
-                      <div key={period}>
-                        <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-subtle">
-                          <Icon className="h-3.5 w-3.5" />
-                          {PERIOD_LABELS[period]}
-                        </p>
+              // Une plage vidée par le filtre ne s'affiche pas : un intitulé
+              // « Après-midi » suivi de rien ferait passer le prof pour complet.
+              if (shown.length === 0) return null;
 
-                        <div className="flex flex-wrap gap-2">
-                          {periodSlots.map((slot) => (
-                            <button
-                              key={slot.startsAt}
-                              type="button"
-                              aria-pressed={selected === slot.startsAt}
-                              onClick={() => setSelected(slot.startsAt)}
-                              className={cn(
-                                "rounded-md border px-3 py-1.5 text-sm transition-colors",
-                                selected === slot.startsAt
-                                  ? "border-primary bg-primary text-white"
-                                  : "border-border hover:border-primary"
-                              )}
-                            >
-                              {formatHour(slot.startsAt, timezone)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+              const Icon = PERIOD_ICONS[period];
+
+              return (
+                // Le titre de plage est rendu même quand la journée n'en
+                // compte qu'une : « Matin » seul dit que ce prof n'enseigne
+                // que le matin ce jour-là, ce qui est précisément
+                // l'information cherchée.
+                <div key={period}>
+                  <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-subtle">
+                    <Icon className="h-3.5 w-3.5" />
+                    {PERIOD_LABELS[period]}
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {shown.map((slot) => (
+                      <button
+                        key={slot.startsAt}
+                        type="button"
+                        aria-pressed={selected === slot.startsAt}
+                        onClick={() => setSelected(slot.startsAt)}
+                        className={cn(
+                          "min-h-11 rounded-[var(--radius-sm)] border px-3 text-sm transition-colors",
+                          selected === slot.startsAt
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border hover:border-primary"
+                        )}
+                      >
+                        {formatHour(slot.startsAt, timezone)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+
+            {/* Les départs intermédiaires restent à un clic. Les montrer tous
+                d'emblée quadruple la liste pour une information que l'élève
+                n'a demandée qu'en dernier recours. */}
+            {hasQuarters && hasRound && !showAll ? (
+              <button
+                type="button"
+                onClick={() => setShowQuarters(true)}
+                className="inline-flex min-h-9 w-fit items-center rounded-full border border-border px-3 text-xs text-muted transition-colors hover:border-primary hover:text-primary"
+              >
+                + quarts d’heure
+              </button>
+            ) : null}
           </div>
+        )}
+          </>
         )}
 
         {selected ? (
@@ -413,7 +643,7 @@ export function BookingWidget({
                     type="button"
                     onClick={() => setInstrument(item.slug)}
                     className={cn(
- "rounded-full border px-3 py-1 text-sm",
+                      "min-h-9 rounded-full border px-3 text-sm",
                       instrument === item.slug
                         ? "border-primary text-primary"
                         : "border-border text-muted"
@@ -426,7 +656,7 @@ export function BookingWidget({
             ) : null}
 
             {trialOffered ? (
-              <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={isTrial}
@@ -525,10 +755,9 @@ function EmptyWeek({
         <p className="text-sm text-muted">
           Aucun créneau cette semaine. Prochain créneau :{" "}
           <span className="font-medium text-foreground first-letter:uppercase">
-            {formatDay(laterNext.toISOString(), timezone)}
+            {formatSlotLong(laterNext, timezone)}
           </span>
-          {" à "}
-          {formatHour(laterNext.toISOString(), timezone)}.
+          .
         </p>
         <Button variant="outline" size="sm" onClick={() => onJump(laterNext)}>
           Aller à cette semaine
@@ -553,22 +782,18 @@ function EmptyWeek({
  */
 function SlotsSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <span className="sr-only">Chargement des créneaux…</span>
-      {[0, 1].map((day) => (
-        <div key={day} aria-hidden>
-          <div className="mb-2.5 h-4 w-40 animate-pulse rounded bg-surface-strong" />
-          <div className="mb-1.5 h-3 w-16 animate-pulse rounded bg-surface" />
-          <div className="flex flex-wrap gap-2">
-            {Array.from({ length: day === 0 ? 6 : 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-8 w-16 animate-pulse rounded-md bg-surface"
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      <div aria-hidden className="h-4 w-40 animate-pulse rounded bg-surface-strong" />
+      <div aria-hidden className="h-3 w-16 animate-pulse rounded bg-surface" />
+      <div aria-hidden className="flex flex-wrap gap-2">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-11 w-16 animate-pulse rounded-[var(--radius-sm)] bg-surface"
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -583,16 +808,32 @@ function startOfWeek(date: Date): Date {
 }
 
 /**
- * Étiquette du jour, formatée depuis l'**instant** d'un créneau et non depuis la
- * clé civile du regroupement : celle-ci est déjà exprimée dans le fuseau du
- * prof, la repasser dans ce fuseau la décalerait d'un jour.
+ * Décalage d'une clé civile `AAAA-MM-JJ`, en jours.
+ *
+ * Fait en UTC, sans fuseau : une clé civile est **déjà** exprimée dans le
+ * fuseau du prof, la repasser dans un fuseau la décalerait d'un jour.
  */
-function formatDay(iso: string, timezone: string): string {
-  return new Date(iso).toLocaleDateString("fr-FR", {
+function addDayKey(key: string, days: number): string {
+  const date = new Date(`${key}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** « lun. » — la clé civile se lit en UTC, pour la même raison. */
+function weekdayShort(key: string): string {
+  return new Date(`${key}T12:00:00Z`).toLocaleDateString("fr-FR", {
+    weekday: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** « lundi 3 août » — même règle : la clé est déjà dans le bon fuseau. */
+function formatDayKey(key: string): string {
+  return new Date(`${key}T12:00:00Z`).toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "numeric",
     month: "long",
-    timeZone: timezone,
+    timeZone: "UTC",
   });
 }
 

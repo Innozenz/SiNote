@@ -4,7 +4,8 @@ import { useState } from "react";
 import { AlertCircle, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 
 import { AvatarUploader } from "@/components/avatar-uploader";
-import { PageHeader, SectionTitle } from "@/components/editorial";
+import { SectionTitle } from "@/components/editorial";
+import { MaFicheHeader } from "@/components/ma-fiche-tabs";
 import { FormFailure } from "@/components/form-failure";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -170,15 +171,8 @@ export function TeacherProfileForm({
     <div className="flex flex-col gap-10">
       {/* En-tête + état de publication */}
       <div className="flex flex-col gap-4">
-        <PageHeader
-          size="page"
-          eyebrow="Espace professeur"
-          title="Ma fiche"
-          lead={
-            <>
-              Adresse publique : <code>/profs/{profile.slug}</code>
-            </>
-          }
+        <MaFicheHeader
+          active="fiche"
           meta={
             <div className="flex items-center gap-3 sm:justify-end">
               <Badge variant={isPublished ? "success" : "secondary"}>
@@ -201,6 +195,26 @@ export function TeacherProfileForm({
             </div>
           }
         />
+
+        {/* L'adresse publique suit les onglets plutôt que l'accroche : elle
+            appartient à cet onglet-là, pas aux trois. Visible au premier coup
+            d'œil quand la fiche est en ligne. */}
+        <p className="text-sm text-muted">
+          Adresse publique : <code>/profs/{profile.slug}</code>
+          {isPublished ? (
+            <>
+              {" · "}
+              <a
+                href={`/profs/${profile.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Voir ma fiche publique →
+              </a>
+            </>
+          ) : null}
+        </p>
 
         {!canPublish || !profile.subscriptionActive ? (
           <div className="flex flex-col gap-3">

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PageHeader } from "@/components/editorial";
+import { MaFicheHeader } from "@/components/ma-fiche-tabs";
 import {
   TeacherReviewReplies,
   type TeacherReviewRow,
@@ -85,11 +85,9 @@ export default async function TeacherReviewsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <PageHeader
-        size="page"
-        eyebrow="Espace professeur"
-        title="Avis"
-        lead="Écrits par des élèves ayant suivi un cours que vous avez clôturé. Vous pouvez y répondre publiquement."
+      <MaFicheHeader
+        active="avis"
+        counts={{ avis: summary.count }}
         meta={
           summary.average !== null ? (
             <div className="flex items-center gap-3 sm:justify-end">
@@ -106,6 +104,11 @@ export default async function TeacherReviewsPage() {
           ) : null
         }
       />
+
+      <p className="text-sm text-muted">
+        Écrits par des élèves ayant suivi un cours que vous avez clôturé. Vous
+        pouvez y répondre publiquement.
+      </p>
 
       <TeacherReviewReplies initial={rows} timezone={teacher.user.timezone} />
     </div>

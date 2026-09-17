@@ -3,8 +3,10 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
+import type { InstrumentFamily } from "@prisma/client";
 
 import { PageHeader } from "@/components/editorial";
+import { InstrumentChip } from "@/components/instrument-chip";
 import { ListFilters } from "@/components/list-filters";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { auth } from "@/lib/auth";
@@ -32,27 +34,50 @@ export default async function TeacherStudentsPage({
 
   const teacher = await prisma.teacherProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, user: { select: { timezone: true } } },
+    select: {
+      id: true,
+      reportsSeenAt: true,
+      user: { select: { timezone: true } },
+    },
   });
 
   if (!teacher) redirect("/dashboard");
 
-  const students = await prisma.studentProfile.findMany({
-    where: { bookings: { some: { teacherId: teacher.id } } },
-    select: {
-      id: true,
-      birthDate: true,
-      user: { select: { name: true, image: true } },
-      bookings: {
-        where: { teacherId: teacher.id },
-        select: {
-          startsAt: true,
-          status: true,
-          instrument: { select: { name: true } },
+  const [students, unreadByStudent] = await Promise.all([
+    prisma.studentProfile.findMany({
+      where: { bookings: { some: { teacherId: teacher.id } } },
+      select: {
+        id: true,
+        birthDate: true,
+        user: { select: { name: true, image: true } },
+        bookings: {
+          where: { teacherId: teacher.id },
+          select: {
+            startsAt: true,
+            status: true,
+            instrument: { select: { name: true, family: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    // Commentaires de compte rendu écrits par l'élève depuis ma dernière
+    // consultation : la même règle que la pastille de la barre latérale,
+    // ventilée par élève pour dire **qui** attend.
+    prisma.message.groupBy({
+      by: ["studentId"],
+      where: {
+        teacherId: teacher.id,
+        reportId: { not: null },
+        sender: "STUDENT",
+        createdAt: { gt: teacher.reportsSeenAt },
+      },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const unread = new Map(
+    unreadByStudent.map((row) => [row.studentId, row._count._all])
+  );
 
   const now = new Date();
   const dateFormat = new Intl.DateTimeFormat("fr-FR", {
@@ -75,8 +100,10 @@ export default async function TeacherStudentsPage({
         .filter((b) => b.startsAt <= now)
         .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime())[0];
       const instruments = [
-        ...new Set(student.bookings.map((b) => b.instrument.name)),
-      ];
+        ...new Map(
+          student.bookings.map((b) => [b.instrument.name, b.instrument.family])
+        ),
+      ].map(([name, family]) => ({ name, family }));
       const lastActivity = student.bookings
         .map((b) => b.startsAt.getTime())
         .reduce((max, t) => Math.max(max, t), 0);
@@ -90,6 +117,7 @@ export default async function TeacherStudentsPage({
         lessonCount: lessons.length,
         next: upcoming ? dateFormat.format(upcoming.startsAt) : null,
         last: lastPast ? dateFormat.format(lastPast.startsAt) : null,
+        unread: unread.get(student.id) ?? 0,
         lastActivity,
       };
     })
@@ -106,7 +134,8 @@ export default async function TeacherStudentsPage({
   const visibleRows = rows.filter(
     (row) =>
       (!needle || row.name.toLowerCase().includes(needle)) &&
-      (!instrument || row.instruments.includes(instrument))
+      (!instrument ||
+        row.instruments.some((entry) => entry.name === instrument))
   );
 
   return (
@@ -121,6 +150,17 @@ export default async function TeacherStudentsPage({
             : rows.length === 1
               ? "1 élève a réservé avec vous."
               : `${rows.length} élèves ont réservé avec vous.`
+        }
+        meta={
+          // Les comptes rendus ont quitté le menu pour vivre dans le dossier de
+          // chaque élève ; l'atelier chronologique, lui, reste utile pour écrire
+          // à la chaîne. C'est ici sa porte d'entrée.
+          <Link
+            href="/dashboard/prof/comptes-rendus"
+            className="text-sm text-primary hover:underline"
+          >
+            Tous les comptes rendus →
+          </Link>
         }
       />
 
@@ -164,20 +204,41 @@ export default async function TeacherStudentsPage({
                       <span className="font-normal text-muted"> · {row.age} ans</span>
                     ) : null}
                   </p>
-                  <p className="truncate text-sm text-muted">
-                    {row.instruments.join(", ") || "—"}
+                  {/* La teinte de la famille remplace une énumération en texte :
+                      « piano, chant » se distingue d'un coup d'œil de « piano,
+                      guitare » sans qu'on ait à lire les mots. */}
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    {row.instruments.map((entry) => (
+                      <InstrumentChip
+                        key={entry.name}
+                        name={entry.name}
+                        family={entry.family as InstrumentFamily}
+                        size="xs"
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-1 truncate text-xs text-subtle sm:hidden">
+                    {row.lessonCount} cours
+                    {row.last ? ` · dernier le ${row.last}` : ""}
                   </p>
                 </div>
 
+                {row.unread > 0 ? (
+                  <span
+                    className="shrink-0 rounded-full bg-primary px-1.5 text-xs font-semibold leading-5 text-primary-foreground"
+                    title="Commentaires de compte rendu non lus"
+                  >
+                    {row.unread}
+                  </span>
+                ) : null}
+
                 <div className="hidden shrink-0 text-right text-sm text-muted sm:block">
-                  <p>
-                    {row.lessonCount} cours
-                  </p>
+                  <p>{row.lessonCount} cours</p>
                   <p className="text-xs text-subtle">
                     {row.next
                       ? `Prochain : ${row.next}`
                       : row.last
-                        ? `Dernier : ${row.last}`
+                        ? `Dernier le ${row.last}`
                         : "—"}
                   </p>
                 </div>

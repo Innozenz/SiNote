@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/editorial";
 import {
   TeacherBookings,
   type BookingRow,
+  type BookingTab,
 } from "@/components/teacher-bookings";
 import {
   TeacherVisibilityNotice,
@@ -26,7 +27,23 @@ import { isSubscriptionActive } from "@/lib/teacher/visibility";
  */
 export const metadata: Metadata = { title: "Demandes de cours" };
 
-export default async function TeacherBookingsPage() {
+/**
+ * L'onglet d'arrivée vit dans l'URL. L'accueil renvoie directement sur « à
+ * clôturer » : sans ce paramètre, le prof atterrissait sur « en attente » et
+ * devait retrouver lui-même ce qu'on venait de lui montrer.
+ */
+const TABS: Record<string, BookingTab> = {
+  "en-attente": "pending",
+  "a-venir": "upcoming",
+  "a-cloturer": "toReview",
+  historique: "past",
+};
+
+export default async function TeacherBookingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onglet?: string }>;
+}) {
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) redirect("/");
@@ -64,11 +81,12 @@ export default async function TeacherBookingsPage() {
       status: true,
       startsAt: true,
       endsAt: true,
+      createdAt: true,
       mode: true,
       isTrial: true,
       priceCents: true,
       studentMessage: true,
-      instrument: { select: { id: true, name: true } },
+      instrument: { select: { id: true, name: true, family: true } },
       student: {
         select: {
           user: { select: { name: true } },
@@ -101,6 +119,7 @@ export default async function TeacherBookingsPage() {
   });
 
   const now = new Date();
+  const { onglet } = await searchParams;
 
   const rows: BookingRow[] = bookings.map((booking) => {
     const student = booking.student;
@@ -116,11 +135,13 @@ export default async function TeacherBookingsPage() {
       status: booking.status,
       startsAt: booking.startsAt.toISOString(),
       endsAt: booking.endsAt.toISOString(),
+      createdAt: booking.createdAt.toISOString(),
       mode: booking.mode,
       isTrial: booking.isTrial,
       priceCents: booking.priceCents,
       studentMessage: booking.studentMessage,
       instrumentName: booking.instrument.name,
+      instrumentFamily: booking.instrument.family,
       studentName: student.user.name,
       studentLevel: practice?.level ?? null,
       studentYears: practice?.yearsPracticed ?? null,
@@ -195,7 +216,11 @@ export default async function TeacherBookingsPage() {
         lead="Les demandes à traiter, les cours à venir, ceux à clôturer, et l'historique."
       />
       {blocker ? <TeacherVisibilityNotice blocker={blocker} /> : null}
-      <TeacherBookings initial={rows} timezone={user.timezone} />
+      <TeacherBookings
+        initial={rows}
+        timezone={user.timezone}
+        initialTab={(onglet && TABS[onglet]) || "pending"}
+      />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/editorial";
 import { ListFilters } from "@/components/list-filters";
@@ -162,12 +164,26 @@ export default async function TeacherReportsPage({
   return (
     <div className="flex flex-col gap-8">
       <MarkReportsSeen />
-      <PageHeader
-        size="page"
-        eyebrow="Espace professeur"
-        title="Comptes rendus"
-        lead="Documentez chaque cours pour votre élève : ce qui a été travaillé, des images ou partitions, une note audio."
-      />
+
+      {/* Cet atelier n'est plus dans le menu : il se rejoint depuis les élèves,
+          et doit donc savoir y ramener. Sans ce lien, on y arrive sans en
+          ressortir autrement que par le bouton retour du navigateur. */}
+      <div className="flex flex-col gap-4">
+        <Link
+          href="/dashboard/prof/eleves"
+          className="flex w-fit items-center gap-1 text-sm text-muted hover:underline"
+        >
+          <ChevronLeft className="h-3 w-3" />
+          Élèves
+        </Link>
+
+        <PageHeader
+          size="page"
+          eyebrow="Espace professeur"
+          title="Comptes rendus"
+          lead="Documentez chaque cours pour votre élève : ce qui a été travaillé, des images ou partitions, une note audio."
+        />
+      </div>
 
       {bookings.length === 0 ? (
         <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">

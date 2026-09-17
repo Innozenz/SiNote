@@ -45,7 +45,12 @@ export function sanitizeReportHtml(dirty: string): string {
  * espaces afin qu'« la gamme » se retrouve même quand « gamme » est en gras.
  */
 export function reportPlainText(html: string): string {
-  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
+  // Une espace entre deux blocs, sinon « <h3>Exercice 1</h3><p>Apprendre…</p> »
+  // se lirait « Exercice 1Apprendre… » une fois les balises retirées.
+  return sanitizeHtml(html.replace(/<\/(p|li|h2|h3|blockquote|br)\s*>|<br\s*\/?>/gi, "$& "), {
+    allowedTags: [],
+    allowedAttributes: {},
+  })
     .replace(/\s+/g, " ")
     .trim();
 }

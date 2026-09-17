@@ -57,7 +57,7 @@ export default async function LoginPage({
       !user?.role
         ? "/onboarding"
         : (callbackUrl ??
-            (user.role === "TEACHER" ? "/dashboard/prof" : "/dashboard/cours"))
+            (user.role === "TEACHER" ? "/dashboard/prof" : "/dashboard"))
     );
   }
 

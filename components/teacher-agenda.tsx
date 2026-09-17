@@ -8,11 +8,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import Link from "next/link";
+import type { InstrumentFamily, SkillLevel } from "@prisma/client";
 import {
   CalendarX,
   Check,
-  ChevronLeft,
-  ChevronRight,
   FileText,
   Globe,
   Home,
@@ -20,19 +19,21 @@ import {
   Loader2,
   MapPin,
   MessageSquare,
+  PenLine,
   Sparkles,
-  User,
+  ShieldAlert,
   X,
 } from "lucide-react";
 
+import { Eyebrow } from "@/components/editorial";
+import { InstrumentChip } from "@/components/instrument-chip";
 import {
-  AgendaViewSwitch,
-  type AgendaNav,
-} from "@/components/agenda-view-switch";
-import {
-  StudentProfileBody,
-  type StudentProfileView,
-} from "@/components/student-profile-detail";
+  LESSON_MODE_LABELS,
+  LESSON_STATUS_LABELS,
+  LessonStatusBadge,
+} from "@/components/lesson-status";
+import { LEVEL_LABELS } from "@/components/student-profile-detail";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -46,7 +47,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -84,15 +84,23 @@ export type AgendaRow = {
   /** Instants ISO : le fuseau d'affichage est celui du prof, pas du navigateur. */
   startsAt: string;
   endsAt: string;
+  /** Réception de la demande : c'est elle qui date l'attente de l'élève. */
+  createdAt: string;
   mode: "ONLINE" | "TEACHER_PLACE" | "STUDENT_PLACE";
   isTrial: boolean;
   priceCents: number | null;
   studentMessage: string | null;
   instrumentName: string;
+  instrumentFamily: InstrumentFamily;
+  /** Niveau de l'élève **sur l'instrument demandé** — jamais sur les autres. */
+  studentLevel: SkillLevel | null;
   studentId: string;
   studentName: string | null;
-  /** Profil complet de l'élève, montré dans la modale « Voir le profil ». */
-  studentProfile: StudentProfileView;
+  studentImage: string | null;
+  studentAge: number | null;
+  studentIsMinor: boolean;
+  /** Contact du responsable, résumé par `guardianSummary`. */
+  guardianContact: string | null;
 };
 
 /** Règle hebdomadaire, bornes de validité en dates civiles AAAA-MM-JJ. */
@@ -186,18 +194,7 @@ const HATCH =
 
 const WEEKDAY_SHORT = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
-const MODE_LABELS: Record<AgendaRow["mode"], string> = {
-  ONLINE: "Visio",
-  TEACHER_PLACE: "Chez vous",
-  STUDENT_PLACE: "Chez l'élève",
-};
-
-const STATUS_LABELS: Record<AgendaRow["status"], string> = {
-  PENDING: "En attente",
-  CONFIRMED: "Confirmé",
-  COMPLETED: "Terminé",
-  NO_SHOW: "Non honoré",
-};
+const MODE_LABELS = LESSON_MODE_LABELS;
 
 /**
  * Une règle tient l'ensemble : **les neutres appartiennent à la grille, les
@@ -241,17 +238,13 @@ const MODE_ICONS: Record<AgendaRow["mode"], typeof Globe> = {
   STUDENT_PLACE: MapPin,
 };
 
-const ACTIONS: {
-  action: BookingAction;
-  label: string;
-  icon: typeof Check;
-  variant?: "outline";
-}[] = [
-  { action: "confirm", label: "Confirmer", icon: Check },
-  { action: "decline", label: "Refuser", icon: X, variant: "outline" },
-  { action: "complete", label: "Cours donné", icon: Check },
-  { action: "no_show", label: "Élève absent", icon: X, variant: "outline" },
-  { action: "cancel", label: "Annuler", icon: CalendarX, variant: "outline" },
+/** Les cinq transitions que le volet peut proposer, dans l'ordre du parcours. */
+const ACTIONS: BookingAction[] = [
+  "confirm",
+  "decline",
+  "complete",
+  "no_show",
+  "cancel",
 ];
 
 // Confirmation en toast des actions qui gardent le cours à l'agenda. Annuler et
@@ -306,7 +299,6 @@ export function TeacherAgenda({
   view,
   timezone,
   granularityMin,
-  nav,
 }: {
   rows: AgendaRow[];
   rules: AgendaRule[];
@@ -319,14 +311,16 @@ export function TeacherAgenda({
   timezone: string;
   /** Pas de départ des créneaux, pour aimanter le glisser-déposer. */
   granularityMin: number;
-  /** Cibles de navigation, calculées côté serveur (l'état vit dans l'URL). */
-  nav: AgendaNav;
 }) {
   const [rows, setRows] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Modale « profil de l'élève », ouverte par-dessus le détail du cours.
-  const [showProfile, setShowProfile] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Le volet latéral n'existe qu'à partir de `lg` ; en dessous, le même contenu
+  // s'ouvre en feuille. On ne peut pas laisser le CSS trancher : un Radix Dialog
+  // « ouvert » monte son overlay quelle que soit la largeur, et le volet et la
+  // feuille se superposeraient sur grand écran.
+  const isDesktop = useIsDesktop();
 
   // Glisser-déposer. `bodyRef` sert à convertir la position du pointeur en
   // (jour, minute) ; `pending` retient l'amorce tant que le seuil n'est pas
@@ -347,7 +341,6 @@ export function TeacherAgenda({
   useEffect(() => {
     setRows(initial);
     setSelectedId(null);
-    setShowProfile(false);
   }, [initial]);
 
   const agenda = useMemo(
@@ -402,17 +395,22 @@ export function TeacherAgenda({
   const selected = rows.find((row) => row.id === selectedId) ?? null;
 
   const hasOpenings = agenda.days.some((day) => day.open.length > 0);
-  const lessons = rows.filter(
-    (row) => row.status === "PENDING" || row.status === "CONFIRMED"
-  );
 
-  // Durée réelle, pas murale : c'est du temps de travail, pas des lignes de
-  // grille. Les deux diffèrent les jours de changement d'heure.
-  const totalMinutes = lessons.reduce(
-    (sum, row) =>
+  // Deux comptes distincts, parce qu'ils appellent deux gestes différents : un
+  // cours est posé, une demande attend une réponse et immobilise son créneau.
+  const lessonCount = rows.filter((row) => row.status !== "PENDING").length;
+  const requestCount = rows.filter((row) => row.status === "PENDING").length;
+
+  // Heures ouvertes de la période affichée : c'est la surface blanche de la
+  // grille, celle qu'un élève peut encore réserver. Minutes murales, comme le
+  // reste du dessin.
+  const openMinutes = agenda.days.reduce(
+    (sum, day) =>
       sum +
-      (new Date(row.endsAt).getTime() - new Date(row.startsAt).getTime()) /
-        60_000,
+      day.open.reduce(
+        (dayTotal, interval) => dayTotal + (interval.end - interval.start),
+        0
+      ),
     0
   );
 
@@ -593,6 +591,19 @@ export function TeacherAgenda({
 
   const pendingSpec = pending ? DESTRUCTIVE[pending.action] : undefined;
 
+  const inspector = selected ? (
+    <LessonInspector
+      row={selected}
+      timezone={timezone}
+      now={now}
+      busy={busy}
+      onAct={(id, action) =>
+        DESTRUCTIVE[action] ? setPending({ id, action }) : void act(id, action)
+      }
+      onClose={() => setSelectedId(null)}
+    />
+  ) : null;
+
   return (
     <div className="flex flex-col gap-6">
       {pending && pendingSpec ? (
@@ -615,222 +626,218 @@ export function TeacherAgenda({
           }}
         />
       ) : null}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle>{title}</CardTitle>
+      {/* Grille et volet côte à côte à partir de `lg`. En dessous, le volet
+          disparaît et son contenu revient en feuille : deux colonnes de 320 px
+          ne tiennent pas sur un téléphone, et comprimer la grille lui ferait
+          perdre ce qui la rend lisible. */}
+      <div className="flex items-start gap-6">
+        <Card className="min-w-0 flex-1">
+          <CardHeader>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <CardTitle className="font-display text-2xl font-semibold tracking-[-0.01em]">
+                {title}
+              </CardTitle>
               <CardDescription>
-                {lessons.length === 0
-                  ? "Aucun cours prévu."
-                  : `${lessons.length} cours · ${formatDuration(totalMinutes)}`}
+                {[
+                  rows.length === 0
+                    ? "Aucun cours prévu"
+                    : lessonCount > 0
+                      ? `${lessonCount} cours`
+                      : null,
+                  requestCount > 0
+                    ? `${requestCount} demande${requestCount > 1 ? "s" : ""}`
+                    : null,
+                  `${formatDuration(openMinutes)} ouvertes`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </CardDescription>
             </div>
+          </CardHeader>
 
-            {/* Vue et navigation vivent dans l'URL (partageable, favori, retour
-                arrière). Les cibles sont calculées côté serveur. */}
-            <div className="flex flex-wrap items-center gap-2">
-              <AgendaViewSwitch view={view} nav={nav} />
-
-              <div className="flex items-center gap-1">
-                <Button asChild variant="outline" size="sm">
-                  <Link href={nav.previousHref} aria-label="Précédent">
-                    <ChevronLeft className="h-4 w-4" />
-                  </Link>
-                </Button>
-                {/* Le raccourci ne s'affiche que lorsqu'il mène ailleurs. */}
-                {nav.currentHref ? (
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={nav.currentHref}>{nav.currentLabel}</Link>
-                  </Button>
-                ) : null}
-                <Button asChild variant="outline" size="sm">
-                  <Link href={nav.nextHref} aria-label="Suivant">
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent className="flex flex-col gap-4">
-          {/* Sept colonnes horaires ne tiennent pas sur un téléphone : la
-              grille défile horizontalement plutôt que de se comprimer. La
-              colonne des heures reste épinglée à gauche — sans elle, un bloc
-              vu au milieu du défilement ne dit plus à quelle heure il est. */}
-          {/* `overflow-y-clip` et non le défaut : dès qu'un axe cesse d'être
-              `visible`, l'autre est ramené à `auto` par la spécification, et la
-              grille se retrouvait avec un ascenseur vertical propre qui
-              décrochait la ligne des jours de ses colonnes. `clip` n'est pas
-              `visible`, donc il coupe court à cette coercition sans rien
-              rogner : la hauteur du contenu est fixée par construction. */}
-          <div className="-mx-2 overflow-x-auto overflow-y-clip px-2">
-            <div className={cn(days > 1 ? "min-w-[44rem]" : "min-w-[18rem]")}>
-              <div className="flex">
-                <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated" />
-                {agenda.days.map((day) => (
-                  <DayHeader key={day.date} day={day} />
-                ))}
-              </div>
-
-              <div className="flex" style={{ height }}>
-                <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated">
-                  {hourMarks(agenda.startMinute, agenda.endMinute).map(
-                    (minute) => (
-                      <span
-                        key={minute}
-                        className="absolute right-1 -translate-y-1/2 text-[11px] tabular-nums text-subtle"
-                        style={{ top: `${offset(minute)}%` }}
-                      >
-                        {formatTime(minute)}
-                      </span>
-                    )
-                  )}
-                </div>
-
-                <div
-                  ref={bodyRef}
-                  className="relative flex flex-1 border-t border-border"
-                >
-                  {agenda.days.map((day, dayIndex) => (
-                    <DayColumn
-                      key={day.date}
-                      day={day}
-                      dayIndex={dayIndex}
-                      offset={offset}
-                      rangeStart={agenda.startMinute}
-                      rangeEnd={agenda.endMinute}
-                      selectedId={selectedId}
-                      onSelect={select}
-                      dnd={dnd}
-                    />
+          <CardContent className="flex flex-col gap-4">
+            {/* Sept colonnes horaires ne tiennent pas sur un téléphone : la
+                grille défile horizontalement plutôt que de se comprimer. La
+                colonne des heures reste épinglée à gauche — sans elle, un bloc
+                vu au milieu du défilement ne dit plus à quelle heure il est. */}
+            {/* `overflow-y-clip` et non le défaut : dès qu'un axe cesse d'être
+                `visible`, l'autre est ramené à `auto` par la spécification, et la
+                grille se retrouvait avec un ascenseur vertical propre qui
+                décrochait la ligne des jours de ses colonnes. `clip` n'est pas
+                `visible`, donc il coupe court à cette coercition sans rien
+                rogner : la hauteur du contenu est fixée par construction. */}
+            <div className="-mx-2 overflow-x-auto overflow-y-clip px-2">
+              <div className={cn(days > 1 ? "min-w-[44rem]" : "min-w-[18rem]")}>
+                <div className="flex">
+                  <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated" />
+                  {agenda.days.map((day) => (
+                    <DayHeader key={day.date} day={day} />
                   ))}
+                </div>
 
-                  {/* Aperçu du glisser : où le cours atterrirait, aimanté au pas. */}
-                  {drag ? (
-                    <div
-                      aria-hidden
-                      className={cn(
-                        "pointer-events-none absolute z-20 overflow-hidden rounded-sm border-2 border-dashed",
-                        drag.invalid
-                          ? "border-danger bg-danger-soft/70"
-                          : "border-primary bg-primary-soft/70"
-                      )}
-                      style={{
-                        top: `${offset(drag.startMinute)}%`,
-                        height: `${offset(drag.startMinute + drag.durationMin) - offset(drag.startMinute)}%`,
-                        left: `calc(${(drag.dayIndex / agenda.days.length) * 100}% + 1px)`,
-                        width: `calc(${100 / agenda.days.length}% - 2px)`,
-                      }}
-                    >
-                      {!drag.invalid ? (
-                        <span className="px-1 text-[11px] font-medium text-primary">
-                          {formatTime(drag.startMinute)}
+                <div className="flex" style={{ height }}>
+                  <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated">
+                    {hourMarks(agenda.startMinute, agenda.endMinute).map(
+                      (minute) => (
+                        <span
+                          key={minute}
+                          className="absolute right-1 -translate-y-1/2 text-[11px] tabular-nums text-subtle"
+                          style={{ top: `${offset(minute)}%` }}
+                        >
+                          {formatTime(minute)}
                         </span>
-                      ) : null}
-                    </div>
-                  ) : null}
+                      )
+                    )}
+                  </div>
 
-                  {/* Repère « maintenant », posé par-dessus la colonne du jour. */}
-                  {showNow ? (
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute z-10 h-px bg-accent"
-                      style={{
-                        top: `${offset(nowMinute)}%`,
-                        left: `${(todayIndex / agenda.days.length) * 100}%`,
-                        width: `${100 / agenda.days.length}%`,
-                      }}
-                    >
-                      <span className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-accent" />
-                    </div>
-                  ) : null}
+                  <div
+                    ref={bodyRef}
+                    className="relative flex flex-1 border-t border-border"
+                  >
+                    {agenda.days.map((day, dayIndex) => (
+                      <DayColumn
+                        key={day.date}
+                        day={day}
+                        dayIndex={dayIndex}
+                        offset={offset}
+                        rangeStart={agenda.startMinute}
+                        rangeEnd={agenda.endMinute}
+                        selectedId={selectedId}
+                        onSelect={select}
+                        dnd={dnd}
+                      />
+                    ))}
+
+                    {/* Aperçu du glisser : où le cours atterrirait, aimanté au pas. */}
+                    {drag ? (
+                      <div
+                        aria-hidden
+                        className={cn(
+                          "pointer-events-none absolute z-20 overflow-hidden rounded-sm border-2 border-dashed",
+                          drag.invalid
+                            ? "border-danger bg-danger-soft/70"
+                            : "border-primary bg-primary-soft/70"
+                        )}
+                        style={{
+                          top: `${offset(drag.startMinute)}%`,
+                          height: `${offset(drag.startMinute + drag.durationMin) - offset(drag.startMinute)}%`,
+                          left: `calc(${(drag.dayIndex / agenda.days.length) * 100}% + 1px)`,
+                          width: `calc(${100 / agenda.days.length}% - 2px)`,
+                        }}
+                      >
+                        {!drag.invalid ? (
+                          <span className="px-1 text-[11px] font-medium text-primary">
+                            {formatTime(drag.startMinute)}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {/* Repère « maintenant », posé par-dessus la colonne du jour. */}
+                    {showNow ? (
+                      <div
+                        aria-hidden
+                        className="pointer-events-none absolute z-10 h-px bg-accent"
+                        style={{
+                          top: `${offset(nowMinute)}%`,
+                          left: `${(todayIndex / agenda.days.length) * 100}%`,
+                          width: `${100 / agenda.days.length}%`,
+                        }}
+                      >
+                        <span className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-accent" />
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <Legend />
+            <Legend />
 
-          {!hasOpenings ? (
-            <p className="flex items-start gap-2 rounded-md bg-warning-soft p-3 text-sm text-warning">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                Aucune plage d&apos;ouverture cette semaine : personne ne peut
-                vous réserver de cours.{" "}
-                <Link
-                  href="/dashboard/prof/disponibilites"
-                  className="font-medium underline"
-                >
-                  Définir mes disponibilités
-                </Link>
-              </span>
-            </p>
-          ) : null}
-        </CardContent>
-      </Card>
+            {!hasOpenings ? (
+              <p className="flex items-start gap-2 rounded-md bg-warning-soft p-3 text-sm text-warning">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Aucune plage d&apos;ouverture cette semaine : personne ne peut
+                  vous réserver de cours.{" "}
+                  <Link
+                    href="/dashboard/prof/disponibilites"
+                    className="font-medium underline"
+                  >
+                    Définir mes disponibilités
+                  </Link>
+                </span>
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
 
-      <Dialog
-        open={selected !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedId(null);
-            setShowProfile(false);
-          }
-        }}
-      >
-        <DialogContent>
-          {selected ? (
-            <BookingDetail
-              row={selected}
-              timezone={timezone}
-              now={now}
-              busy={busy}
-              onAct={(id, action) =>
-                DESTRUCTIVE[action]
-                  ? setPending({ id, action })
-                  : void act(id, action)
-              }
-              onShowProfile={() => setShowProfile(true)}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      {/* Profil complet de l'élève, par-dessus le détail du cours — même contenu
-          que la modale « Voir le profil » des demandes. */}
-      <Dialog
-        open={showProfile && selected !== null}
-        onOpenChange={(open) => {
-          if (!open) setShowProfile(false);
-        }}
-      >
-        <DialogContent>
-          {selected ? (
-            <div className="flex flex-col gap-5">
-              <DialogHeader>
-                <DialogTitle>{selected.studentName ?? "Élève"}</DialogTitle>
-                <DialogDescription>
-                  {[
-                    selected.studentProfile.age !== null
-                      ? `${selected.studentProfile.age} ans`
-                      : null,
-                    selected.studentProfile.city,
-                    selected.instrumentName,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </DialogDescription>
-              </DialogHeader>
-
-              <StudentProfileBody profile={selected.studentProfile} />
+        {/* Le volet : 320 px, collant, toujours présent à partir de `lg`. Vide,
+            il dit à quoi il sert plutôt que de laisser un trou dans la page. */}
+        <aside className="sticky top-6 hidden w-80 shrink-0 lg:block">
+          {inspector ? (
+            <div className="rounded-lg border border-border bg-elevated p-5">
+              {inspector}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted">
+              Cliquez un cours pour l&apos;ouvrir ici : détail de l&apos;élève,
+              tarif, message, et les actions possibles.
+            </div>
+          )}
+        </aside>
+      </div>
+
+      {/* Sous `lg`, le même contenu en feuille. Un seul composant, deux
+          contenants — dupliquer le détail garantirait qu'ils divergent. */}
+      <Dialog
+        open={!isDesktop && selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedId(null);
+        }}
+      >
+        {/* Feuille ancrée en bas plutôt que boîte centrée : sur un téléphone
+            tenu à une main, le pouce atteint le bas de l'écran, pas son milieu —
+            et les actions du volet sont en fin de contenu. Posé en classes ici
+            plutôt qu'en variante de la primitive : c'est ce dialogue-ci qui est
+            une feuille, pas tous. */}
+        <DialogContent className="bottom-0 left-0 top-auto max-h-[80vh] w-full max-w-none translate-x-0 translate-y-0 rounded-b-none pb-8">
+          <DialogHeader className="sr-only">
+            <DialogTitle>
+              {selected
+                ? `${selected.studentName ?? "Élève"} — ${selected.instrumentName}`
+                : "Cours"}
+            </DialogTitle>
+          </DialogHeader>
+          {inspector}
         </DialogContent>
       </Dialog>
     </div>
   );
+}
+
+/**
+ * Vrai à partir de `lg` (1024 px), la largeur à laquelle le volet apparaît.
+ *
+ * Nécessairement en JavaScript : le CSS peut cacher le volet, il ne peut pas
+ * empêcher un Radix Dialog « ouvert » de monter son overlay. Faux au premier
+ * rendu (le serveur ne connaît pas la fenêtre), ce qui est sans conséquence :
+ * aucun cours n'est sélectionné au montage.
+ */
+function useIsDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setIsDesktop(query.matches);
+
+    sync();
+    query.addEventListener("change", sync);
+
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  return isDesktop;
 }
 
 function DayHeader({ day }: { day: AgendaDay<AgendaLesson> }) {
@@ -1061,85 +1068,191 @@ function EventBlock({
   );
 }
 
-function BookingDetail({
+/**
+ * Volet d'inspection d'un cours.
+ *
+ * Il a remplacé une modale, et le changement n'est pas cosmétique : une modale
+ * masque la grille, or c'est justement la grille qu'on relit en décidant
+ * (« si je confirme ça, que reste-t-il de ma jeudi ? »). Le volet laisse les
+ * deux lisibles.
+ *
+ * Aucune règle de cycle de vie n'est réécrite ici : les boutons proposés sortent
+ * de `checkTransition`, la machine à états que le serveur applique — ce volet ne
+ * peut donc offrir ni ce que PATCH refuserait, ni cacher ce qu'il accepterait.
+ */
+function LessonInspector({
   row,
   timezone,
   now,
   busy,
   onAct,
-  onShowProfile,
+  onClose,
 }: {
   row: AgendaRow;
   timezone: string;
   now: Date;
   busy: boolean;
   onAct: (id: string, action: BookingAction) => void;
-  /** Ouvre la modale du profil complet de l'élève. */
-  onShowProfile: () => void;
+  onClose: () => void;
 }) {
   const startsAt = new Date(row.startsAt);
   const endsAt = new Date(row.endsAt);
+  const createdAt = new Date(row.createdAt);
 
-  // Les actions proposées sortent de la machine à états, pas d'une liste
-  // recopiée : cette modale ne peut donc pas offrir ce que le serveur
-  // refuserait.
-  const allowed = ACTIONS.filter(
-    (entry) =>
-      checkTransition({
-        action: entry.action,
-        currentStatus: row.status,
-        actor: "teacher",
-        startsAt,
-        endsAt,
-        now,
-      }).ok
+  const allowed = new Set(
+    ACTIONS.filter(
+      (action) =>
+        checkTransition({
+          action,
+          currentStatus: row.status,
+          actor: "teacher",
+          startsAt,
+          endsAt,
+          now,
+        }).ok
+    )
   );
 
   // Le compte rendu s'ouvre dès que le cours a commencé (confirmé ou terminé) —
-  // même règle que l'atelier et la fiche élève. Le lien pointe sur l'ancre du
-  // bon compte rendu dans la fiche élève, comme le fait l'historique.
+  // même règle que l'atelier et la fiche élève.
   const documentable = canDocument(row.status, startsAt, now);
 
   const format = (date: Date, options: Intl.DateTimeFormatOptions) =>
     date.toLocaleString("fr-FR", { ...options, timeZone: timezone });
+  const time = (date: Date) =>
+    format(date, { hour: "2-digit", minute: "2-digit" });
+
+  const waitedDays = Math.floor(
+    (now.getTime() - createdAt.getTime()) / 86_400_000
+  );
+  const name = row.studentName ?? "Élève";
+  const studentHref = `/dashboard/prof/eleves/${row.studentId}`;
+
+  const facts: { label: string; value: React.ReactNode }[] = [
+    {
+      label: "Cours",
+      value: (
+        <InstrumentChip
+          name={row.instrumentName}
+          family={row.instrumentFamily}
+          detail={row.isTrial ? "essai" : null}
+        />
+      ),
+    },
+  ];
+
+  if (row.studentLevel) {
+    facts.push({ label: "Niveau", value: LEVEL_LABELS[row.studentLevel] });
+  }
+
+  facts.push({ label: "Lieu", value: MODE_LABELS[row.mode] });
+
+  if (row.priceCents !== null) {
+    facts.push({
+      label: "Tarif",
+      value: (
+        <span>
+          {formatPrice(row.priceCents)}
+          <span className="text-subtle">, réglé à vous</span>
+        </span>
+      ),
+    });
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <DialogHeader>
-        <DialogTitle>
-          {row.studentName ?? "Élève"}
-          <span className="text-muted"> — {row.instrumentName}</span>
-        </DialogTitle>
-        <DialogDescription>
-          <span className="first-letter:uppercase">
-            {format(startsAt, {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </span>
-          {" · "}
-          {format(startsAt, { hour: "2-digit", minute: "2-digit" })}
-          {" – "}
-          {format(endsAt, { hour: "2-digit", minute: "2-digit" })}
-        </DialogDescription>
-      </DialogHeader>
+    <div className="flex flex-col gap-5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <LessonStatusBadge status={row.status} />
+          {row.isTrial ? (
+            <Badge variant="secondary">
+              <Sparkles className="mr-1 h-3 w-3" />
+              Essai
+            </Badge>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fermer le détail"
+          className="-mr-2 -mt-2 hidden h-9 w-9 items-center justify-center rounded-md text-subtle transition-colors hover:bg-surface hover:text-foreground lg:flex"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
 
-      {/* Détails en lignes : mode, tarif, statut, essai. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">{STATUS_LABELS[row.status]}</Badge>
-        <Badge variant="secondary">{MODE_LABELS[row.mode]}</Badge>
-        {row.priceCents !== null ? (
-          <Badge variant="secondary">{formatPrice(row.priceCents)}</Badge>
-        ) : null}
-        {row.isTrial ? (
-          <Badge variant="secondary">
-            <Sparkles className="mr-1 h-3 w-3" />
-            Essai
-          </Badge>
+      <div>
+        <Eyebrow className="normal-case first-letter:uppercase">
+          {format(startsAt, {
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        </Eyebrow>
+        <p className="mt-1 font-display text-[32px] font-semibold leading-none tabular-nums lg:text-[40px]">
+          {time(startsAt)}
+          <span className="text-subtle"> → </span>
+          {time(endsAt)}
+        </p>
+        {row.status === "PENDING" ? (
+          <p className="mt-2 text-sm text-muted">
+            Demandé le {format(createdAt, { day: "numeric", month: "long" })},
+            {waitedDays <= 0
+              ? " aujourd'hui"
+              : waitedDays === 1
+                ? " il y a 1 jour"
+                : ` il y a ${waitedDays} jours`}
+            .
+          </p>
         ) : null}
       </div>
+
+      {/* L'élève : qui vient, et de quoi il faut se souvenir avant d'ouvrir la
+          porte — l'âge et le responsable d'un mineur en font partie. */}
+      <div className="flex items-center gap-3 border-y border-border py-3">
+        <Avatar className="h-10 w-10 shrink-0 border border-border">
+          <AvatarImage src={row.studentImage || undefined} alt={name} />
+          <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium">{name}</p>
+          {row.studentAge !== null || row.studentIsMinor ? (
+            <p className="truncate text-xs text-muted">
+              {[
+                row.studentAge !== null ? `${row.studentAge} ans` : null,
+                row.studentIsMinor ? "mineur" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          ) : null}
+        </div>
+        <Link
+          href={studentHref}
+          className="shrink-0 text-sm text-primary hover:underline"
+        >
+          Fiche →
+        </Link>
+      </div>
+
+      {row.studentIsMinor ? (
+        <p className="flex items-start gap-2 rounded-md bg-primary-soft p-2 text-xs text-primary">
+          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {row.guardianContact
+            ? `Responsable : ${row.guardianContact}`
+            : "Aucun contact de responsable renseigné."}
+        </p>
+      ) : null}
+
+      <dl className="flex flex-col gap-2 text-sm">
+        {facts.map((fact) => (
+          <div key={fact.label} className="flex items-start gap-3">
+            <dt className="w-16 shrink-0 text-subtle">{fact.label}</dt>
+            <dd className="min-w-0 flex-1">{fact.value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {row.studentMessage ? (
         <p className="flex gap-2 rounded-md bg-surface p-3 text-sm text-muted">
@@ -1148,57 +1261,109 @@ function BookingDetail({
         </p>
       ) : null}
 
-      {allowed.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {allowed.map(({ action, label, icon: Icon, variant }) => (
+      <div className="flex flex-col gap-2">
+        {allowed.has("confirm") ? (
+          <Button
+            variant="success"
+            className="w-full"
+            disabled={busy}
+            onClick={() => onAct(row.id, "confirm")}
+          >
+            {busy ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}
+            Confirmer
+          </Button>
+        ) : null}
+
+        <div className="flex gap-2">
+          {allowed.has("decline") ? (
             <Button
-              key={action}
-              size="sm"
-              variant={variant}
+              variant="outline"
+              className="flex-1"
               disabled={busy}
-              onClick={() => onAct(row.id, action)}
+              onClick={() => onAct(row.id, "decline")}
             >
-              {busy ? (
-                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-              ) : (
-                <Icon className="mr-2 h-3 w-3" />
-              )}
-              {label}
+              <X className="mr-2 h-4 w-4" />
+              Refuser
             </Button>
-          ))}
+          ) : null}
+          <Button variant="ghost" className="flex-1" asChild>
+            <Link href={`${studentHref}?onglet=messages`}>
+              <PenLine className="mr-2 h-4 w-4" />
+              Écrire
+            </Link>
+          </Button>
         </div>
-      ) : (
-        <p className="text-sm text-subtle">
-          Ce cours n&apos;attend plus rien de vous.
-        </p>
-      )}
 
-      {/* Profil en modale (aperçu rapide) et accès à la fiche complète de
-          l'élève (historique, note privée, comptes rendus). */}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" onClick={onShowProfile}>
-          <User className="mr-2 h-3 w-3" />
-          Voir le profil
-        </Button>
+        {allowed.has("complete") || allowed.has("no_show") ? (
+          <div className="flex gap-2">
+            {allowed.has("complete") ? (
+              <Button
+                variant="success"
+                className="flex-1"
+                disabled={busy}
+                onClick={() => onAct(row.id, "complete")}
+              >
+                <Check className="mr-2 h-4 w-4" />
+                Terminé
+              </Button>
+            ) : null}
+            {allowed.has("no_show") ? (
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={busy}
+                onClick={() => onAct(row.id, "no_show")}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Absent
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/dashboard/prof/eleves/${row.studentId}`}>
-            <User className="mr-2 h-3 w-3" />
-            Fiche complète
-          </Link>
-        </Button>
+        {allowed.has("cancel") ? (
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={busy}
+            onClick={() => onAct(row.id, "cancel")}
+          >
+            <CalendarX className="mr-2 h-4 w-4" />
+            Annuler
+          </Button>
+        ) : null}
 
         {documentable ? (
-          <Button asChild variant="outline" size="sm">
-            <Link
-              href={`/dashboard/prof/eleves/${row.studentId}?onglet=comptes-rendus#cr-${row.id}`}
-            >
-              <FileText className="mr-2 h-3 w-3" />
+          <Button variant="outline" className="w-full" asChild>
+            <Link href={`${studentHref}?onglet=comptes-rendus#cr-${row.id}`}>
+              <FileText className="mr-2 h-4 w-4" />
               Compte rendu
             </Link>
           </Button>
         ) : null}
+
+        {allowed.size === 0 && !documentable ? (
+          <p className="text-sm text-subtle">
+            Ce cours n&apos;attend plus rien de vous ({
+              LESSON_STATUS_LABELS[row.status].toLowerCase()
+            }).
+          </p>
+        ) : null}
       </div>
+
+      {/* Le coût d'une demande laissée en attente n'est pas évident : elle a
+          l'air inerte, elle immobilise pourtant le créneau pour tout le monde. */}
+      {row.status === "PENDING" ? (
+        <p className="flex items-start gap-2 text-xs text-muted">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+          Tant que vous n&apos;avez pas répondu, ce créneau est bloqué pour tous
+          les autres élèves.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1220,7 +1385,7 @@ function Legend() {
       className: "border-dashed border-warning/60 bg-warning-soft",
     },
     { label: "Terminé", className: "border-success/40 bg-success-soft" },
-    { label: "Non honoré", className: "border-danger/40 bg-danger-soft" },
+    { label: "Absent", className: "border-danger/40 bg-danger-soft" },
   ];
 
   const grid = [

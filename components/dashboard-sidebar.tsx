@@ -1,23 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   CalendarClock,
-  CalendarDays,
-  ClipboardList,
-  CreditCard,
-  FileText,
-  FolderOpen,
   Inbox,
-  LayoutDashboard,
   type LucideIcon,
   Menu,
   MessageSquare,
   Search,
-  Star,
+  Sun,
   TrendingUp,
   UserCog,
   Users,
@@ -45,34 +39,54 @@ import { cn } from "@/lib/utils";
  * traversent pas la frontière serveur → client. Le layout ne passe que le rôle,
  * `isAdmin`, l'identité et un compteur.
  */
-type Item = { href: string; icon: LucideIcon; label: string; exact?: boolean };
+type Item = {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  exact?: boolean;
+  /** Intitulé de groupe affiché au-dessus de l'entrée (petites capitales). */
+  group?: string;
+};
 
+/**
+ * Six entrées côté prof, contre onze avant la refonte : ce qu'un prof fait
+ * chaque jour tient sur une main. Les horaires vivent dans l'agenda (onglet
+ * « Horaires »), les avis et l'abonnement dans « Ma fiche », les comptes rendus
+ * dans le dossier de chaque élève. L'accueil est sa journée, pas un tableau de
+ * bord.
+ */
 const TEACHER_ITEMS: Item[] = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord", exact: true },
-  { href: "/dashboard/prof", icon: UserCog, label: "Ma fiche", exact: true },
-  {
-    href: "/dashboard/prof/disponibilites",
-    icon: CalendarDays,
-    label: "Disponibilités",
-  },
-  { href: "/dashboard/prof/agenda", icon: CalendarClock, label: "Agenda" },
+  { href: "/dashboard", icon: Sun, label: "Aujourd'hui", exact: true },
   { href: "/dashboard/prof/demandes", icon: Inbox, label: "Demandes" },
-  { href: "/dashboard/prof/comptes-rendus", icon: FileText, label: "Comptes rendus" },
-  { href: "/dashboard/prof/eleves", icon: Users, label: "Mes élèves" },
-  { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" },
+  { href: "/dashboard/prof/agenda", icon: CalendarClock, label: "Agenda" },
+  { href: "/dashboard/prof/eleves", icon: Users, label: "Élèves" },
+  {
+    href: "/dashboard/prof",
+    icon: UserCog,
+    label: "Ma fiche",
+    group: "Mon activité",
+  },
   { href: "/dashboard/prof/activite", icon: TrendingUp, label: "Activité" },
-  { href: "/dashboard/prof/avis", icon: Star, label: "Avis" },
-  { href: "/dashboard/prof/abonnement", icon: CreditCard, label: "Abonnement" },
 ];
 
+/**
+ * Quatre entrées côté élève. « Mes réservations », « Mon agenda » et « Mes
+ * cours » disaient trois fois la même chose ; tout est dans « Mes cours »,
+ * l'accueil, et « Mes profs » garde un dossier par prof.
+ */
 const STUDENT_ITEMS: Item[] = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord", exact: true },
-  { href: "/dashboard/agenda", icon: CalendarClock, label: "Mon agenda" },
-  { href: "/dashboard/cours", icon: ClipboardList, label: "Mes réservations", exact: true },
-  { href: "/dashboard/dossiers", icon: FolderOpen, label: "Mes cours" },
-  { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" },
+  { href: "/dashboard", icon: CalendarClock, label: "Mes cours", exact: true },
+  { href: "/dashboard/dossiers", icon: Users, label: "Mes profs" },
   { href: "/dashboard/cours/profil", icon: UserCog, label: "Mon profil" },
 ];
+
+const FICHE_PATHS = [
+  "/dashboard/prof",
+  "/dashboard/prof/avis",
+  "/dashboard/prof/abonnement",
+];
+const isFichePath = (pathname: string) =>
+  FICHE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 // Bordure gauche transparente sur tous les items : l'actif la colore en épicéa
 // (son « filet »), et la réserver dès l'état neutre évite tout décalage de 2px
@@ -85,6 +99,7 @@ export function DashboardSidebar({
   isAdmin,
   user,
   badges,
+  attention = {},
 }: {
   role: "TEACHER" | "STUDENT";
   /** Capacité admin, orthogonale au rôle : ajoute l'entrée « Administration »
@@ -93,6 +108,12 @@ export function DashboardSidebar({
   user: NavUser;
   /** Compteur par href (demandes en attente, cours avec du nouveau…). */
   badges: Record<string, number>;
+  /**
+   * Point d'attention par href : quelque chose à régler, sans nombre (la fiche
+   * n'est pas visible…). La valeur est le libellé lu au survol et par les
+   * lecteurs d'écran.
+   */
+  attention?: Record<string, string>;
 }) {
   const pathname = usePathname();
   const activeRef = useRef<HTMLAnchorElement>(null);
@@ -111,19 +132,29 @@ export function DashboardSidebar({
     activeRef.current?.scrollIntoView({ block: "nearest" });
   }, [pathname]);
 
-  const isActive = (item: Item) =>
-    item.exact
+  // « Ma fiche » couvre la fiche et ses onglets (avis, abonnement) mais pas
+  // le reste de /dashboard/prof/*, qui a ses propres entrées.
+  const isActive = (item: Item) => {
+    if (item.href === "/dashboard/prof") return isFichePath(pathname);
+    return item.exact
       ? pathname === item.href
       : pathname === item.href || pathname.startsWith(`${item.href}/`);
+  };
 
   const renderItem = (item: Item, attachRef = false) => {
     const Icon = item.icon;
     const active = isActive(item);
     const badge = badges[item.href] ?? 0;
+    const alert = attention[item.href];
 
     return (
+      <Fragment key={item.href}>
+      {item.group ? (
+        <span className="mt-4 mb-1 px-3 text-[0.66rem] font-medium uppercase tracking-[0.14em] text-sidebar-muted/80">
+          {item.group}
+        </span>
+      ) : null}
       <Link
-        key={item.href}
         ref={attachRef && active ? activeRef : undefined}
         href={item.href}
         onClick={() => setOpen(false)}
@@ -143,10 +174,24 @@ export function DashboardSidebar({
           <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
             {badge}
           </span>
+        ) : alert ? (
+          <span
+            role="img"
+            aria-label={alert}
+            title={alert}
+            className="h-2 w-2 shrink-0 rounded-full bg-warning"
+          />
         ) : null}
       </Link>
+      </Fragment>
     );
   };
+
+  // Messages et la recherche sous le filet : transversaux aux deux rôles, hors
+  // du parcours quotidien qu'énumèrent les entrées principales.
+  const messages = renderItem(
+    { href: "/dashboard/messages", icon: MessageSquare, label: "Messages" }
+  );
 
   const findAProf = (
     <Link
@@ -211,6 +256,7 @@ export function DashboardSidebar({
             <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
               {items.map((item) => renderItem(item))}
               <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
+              {messages}
               {findAProf}
             </nav>
 
@@ -235,6 +281,7 @@ export function DashboardSidebar({
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2">
           {items.map((item) => renderItem(item, true))}
           <span aria-hidden className="my-2 h-px shrink-0 bg-sidebar-border" />
+          {messages}
           {findAProf}
         </nav>
 

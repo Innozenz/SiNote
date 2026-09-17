@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CreditCard, ExternalLink, Loader2, ShieldCheck } from "lucide-react";
 
-import { PageHeader } from "@/components/editorial";
+import { MaFicheHeader } from "@/components/ma-fiche-tabs";
 import { Badge } from "@/components/ui/badge";
 import { FormFailure } from "@/components/form-failure";
 import { Button } from "@/components/ui/button";
@@ -95,11 +95,8 @@ export function SubscriptionPanel({
         </p>
       ) : null}
 
-      <PageHeader
-        size="page"
-        eyebrow="Espace professeur"
-        title="Abonnement"
-        lead="L'abonnement rend votre fiche visible des élèves. Les cours, eux, vous sont réglés directement : SiNote ne prend aucune commission."
+      <MaFicheHeader
+        active="abonnement"
         meta={
           <div className="flex flex-col gap-2 sm:items-end">
             <Badge variant={isActive ? "success" : "secondary"}>{status}</Badge>
@@ -124,6 +121,11 @@ export function SubscriptionPanel({
           </div>
         }
       />
+
+      <p className="text-sm text-muted">
+        L&apos;abonnement rend votre fiche visible des élèves. Les cours, eux,
+        vous sont réglés directement : SiNote ne prend aucune commission.
+      </p>
 
       <div className="flex flex-col gap-4">
         {isActive ? (

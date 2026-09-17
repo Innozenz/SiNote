@@ -9,6 +9,12 @@ export type FicheTab = {
   badge?: number;
   /** Éléments non lus : la seule pastille pleine, réservée à ce qui attend. */
   unread?: number;
+  /**
+   * Dette de l'onglet, en clair (« 3 à écrire ») : un sous-ensemble du total
+   * qui demande un geste. Le total dit combien il y en a, `warn` combien
+   * attendent — « Comptes rendus 12 » ne disait pas que trois manquaient.
+   */
+  warn?: string;
 };
 
 /**
@@ -60,6 +66,11 @@ export function FicheTabs({
             {tab.unread ? (
               <span className="rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">
                 {tab.unread}
+              </span>
+            ) : null}
+            {tab.warn ? (
+              <span className="rounded-full bg-warning-soft px-1.5 text-xs font-medium text-warning">
+                {tab.warn}
               </span>
             ) : null}
           </Link>

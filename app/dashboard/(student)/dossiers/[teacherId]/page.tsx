@@ -1,11 +1,21 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, FileText } from "lucide-react";
+import {
+  CalendarPlus,
+  ChevronLeft,
+  FileText,
+  MessageSquare,
+  Star,
+} from "lucide-react";
 
-import { CollapsibleReport } from "@/components/collapsible-report";
 import { Eyebrow, PageTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
+import { InstrumentChip } from "@/components/instrument-chip";
+import {
+  LESSON_STATUS_LABELS,
+  LESSON_STATUS_VARIANTS,
+} from "@/components/lesson-status";
 import { ListFilters } from "@/components/list-filters";
 import { MarkReportsSeen } from "@/components/mark-reports-seen";
 import { MarkThreadRead } from "@/components/mark-thread-read";
@@ -14,19 +24,23 @@ import { ReportViewer } from "@/components/report-view";
 import { TeacherReview } from "@/components/teacher-review";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Stars } from "@/components/ui/stars";
 import { auth } from "@/lib/auth";
 import { lessonTitle } from "@/lib/bookings/title";
 import prisma from "@/lib/prisma";
-import { sanitizeReportHtml } from "@/lib/reports/sanitize";
+import { reportPlainText, sanitizeReportHtml } from "@/lib/reports/sanitize";
+import { canReviewTeacher } from "@/lib/reviews/eligibility";
+import { formatSlotShort, getNextSlotsForTeachers } from "@/lib/teacher/next-slots";
 import { isTeacherVisible } from "@/lib/teacher/visibility";
 
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: "En attente",
-  CONFIRMED: "Confirmé",
-  CANCELLED: "Annulé",
-  COMPLETED: "Terminé",
-  NO_SHOW: "Non honoré",
-  DECLINED: "Refusé",
+/**
+ * Les libellés partagés avec le prof, à la même divergence près que « Mes
+ * cours » : l'élève attend *sa* réponse. Voir `components/student-bookings`.
+ */
+const STATUS_LABELS = {
+  ...LESSON_STATUS_LABELS,
+  PENDING: "En attente de sa réponse",
 };
 
 /**
@@ -36,6 +50,14 @@ const STATUS_LABELS: Record<string, string> = {
  * centralise les cours, leurs comptes rendus (et commentaires) et les échanges.
  * La note privée du prof n'y figure pas — elle lui reste réservée. Accessible
  * seulement si l'élève a au moins un cours avec ce prof, sinon 404.
+ *
+ * Les comptes rendus s'y **lisent comme une page**, dépliés, et non repliés
+ * derrière un titre : c'est ce que l'élève vient chercher, et le premier onglet
+ * l'ouvre directement. La colonne de droite porte ce qui prolonge la relation —
+ * le prochain cours, de quoi en reprendre un, et l'avis.
+ *
+ * Dates dans le fuseau du **prof** : un cours a une heure, et c'est celle-là
+ * que les deux parties lisent, ici comme dans les e-mails de rappel.
  */
 export default async function StudentDossierPage({
   params,
@@ -69,6 +91,7 @@ export default async function StudentDossierPage({
       id: true,
       slug: true,
       status: true,
+      city: true,
       stripeCurrentPeriodEnd: true,
       user: { select: { name: true, image: true, timezone: true } },
       bookings: {
@@ -77,13 +100,18 @@ export default async function StudentDossierPage({
         select: {
           id: true,
           startsAt: true,
+          endsAt: true,
           status: true,
           isTrial: true,
-          instrument: { select: { name: true } },
+          mode: true,
+          meetingUrl: true,
+          address: true,
+          instrument: { select: { name: true, family: true } },
           report: {
             select: {
               title: true,
               content: true,
+              createdAt: true,
               attachments: {
                 orderBy: { createdAt: "asc" },
                 select: {
@@ -133,7 +161,7 @@ export default async function StudentDossierPage({
       reviews: {
         where: { studentId: student.id },
         take: 1,
-        select: { rating: true, comment: true, publishedAt: true },
+        select: { rating: true, comment: true, teacherRepl: true, publishedAt: true },
       },
     },
   });
@@ -142,15 +170,31 @@ export default async function StudentDossierPage({
 
   const now = new Date();
   const name = teacher.user.name ?? "Professeur";
+  const zone = teacher.user.timezone;
+  const visible = isTeacherVisible(teacher, now);
 
   const lessons = teacher.bookings.filter(
     (b) => b.status === "CONFIRMED" || b.status === "COMPLETED"
   );
-  const stats = {
-    total: lessons.length,
-    upcoming: lessons.filter((b) => b.startsAt > now).length,
-    completed: teacher.bookings.filter((b) => b.status === "COMPLETED").length,
-  };
+  const completedCount = teacher.bookings.filter(
+    (b) => b.status === "COMPLETED"
+  ).length;
+  const nextLesson = teacher.bookings
+    .filter((b) => b.status === "CONFIRMED" && b.endsAt > now)
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+
+  // Depuis quand : le premier cours réservé, pas la date du compte.
+  const since = teacher.bookings.reduce<Date | null>(
+    (earliest, b) => (!earliest || b.startsAt < earliest ? b.startsAt : earliest),
+    null
+  );
+
+  // Familles travaillées avec ce prof — une pastille par instrument.
+  const instruments = [
+    ...new Map(
+      teacher.bookings.map((b) => [b.instrument.name, b.instrument.family])
+    ),
+  ].map(([label, family]) => ({ name: label, family }));
 
   const dateFormat = new Intl.DateTimeFormat("fr-FR", {
     weekday: "short",
@@ -158,7 +202,19 @@ export default async function StudentDossierPage({
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: teacher.user.timezone,
+    timeZone: zone,
+  });
+  const longDayFormat = new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: zone,
+  });
+  const writtenFormat = new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: zone,
   });
   // Date civile (AAAA-MM-JJ) dans le fuseau du prof (celui qui date les cours),
   // pour comparer au filtre de dates par simple comparaison de chaînes ISO.
@@ -166,7 +222,7 @@ export default async function StudentDossierPage({
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: teacher.user.timezone,
+    timeZone: zone,
   });
 
   const reports = teacher.bookings.filter(
@@ -182,10 +238,21 @@ export default async function StudentDossierPage({
   }));
 
   const existingReview = teacher.reviews[0] ?? null;
+  // Même règle que la route : un cours terminé suffit, et il n'y en a qu'un
+  // par prof. `canReviewTeacher` tranche ici comme là-bas.
+  const reviewable = canReviewTeacher(completedCount > 0);
+
+  // Prochains créneaux libres, pour reprendre un cours sans passer par la
+  // recherche. Inutile si la fiche n'est pas en ligne : elle ne se réserve pas.
+  const nextSlots = visible
+    ? (await getNextSlotsForTeachers([teacher.id], { count: 3, now })).get(
+        teacher.id
+      )
+    : undefined;
 
   const tabs = [
     { key: "comptes-rendus", label: "Comptes rendus", badge: reports.length },
-    { key: "historique", label: "Historique", badge: teacher.bookings.length },
+    { key: "historique", label: "Cours", badge: teacher.bookings.length },
     { key: "messages", label: "Messages", badge: messages.length },
     { key: "avis", label: "Mon avis" },
   ];
@@ -199,224 +266,402 @@ export default async function StudentDossierPage({
   const crInstrument = sp.cr_instrument ?? "";
   const crFrom = sp.cr_from ?? "";
   const crTo = sp.cr_to ?? "";
-  const reportInstruments = [
-    ...new Set(reports.map((b) => b.instrument.name)),
-  ]
+  const reportInstruments = [...new Set(reports.map((b) => b.instrument.name))]
     .sort((a, b) => a.localeCompare(b, "fr"))
-    .map((name) => ({ value: name, label: name }));
+    .map((label) => ({ value: label, label }));
   const visibleReports = reports.filter((b) => {
     const day = isoDate.format(b.startsAt);
+    // La recherche porte sur le texte **rendu**, pas sur le HTML : « gamme »
+    // doit trouver « la <strong>gamme</strong> ».
+    const haystack = [
+      b.report?.title ?? "",
+      reportPlainText(b.report?.content ?? ""),
+      b.instrument.name,
+    ]
+      .join(" ")
+      .toLowerCase();
+
     return (
       (!crInstrument || b.instrument.name === crInstrument) &&
       (!crFrom || day >= crFrom) &&
       (!crTo || day <= crTo) &&
-      (!crNeedle ||
-        (b.report?.content ?? "").toLowerCase().includes(crNeedle) ||
-        b.instrument.name.toLowerCase().includes(crNeedle))
+      (!crNeedle || haystack.includes(crNeedle))
     );
   });
 
   return (
     <div className="flex flex-col gap-8">
+      {/* ------------------------------------------------------------ En-tête */}
       <div className="flex flex-col gap-4">
         <Link
           href="/dashboard/dossiers"
-          className="flex w-fit items-center gap-1 text-sm text-muted hover:underline"
+          className="flex w-fit items-center gap-1 py-2 text-sm text-muted hover:underline"
         >
           <ChevronLeft className="h-3 w-3" />
-          Mes cours
+          Mes profs
         </Link>
 
-        <div className="flex items-center gap-4 border-b border-border pb-6">
-          <Avatar className="h-16 w-16 shrink-0 border border-border">
-            <AvatarImage src={teacher.user.image || undefined} alt={name} />
-            <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <Eyebrow className="mb-2">Dossier prof</Eyebrow>
-            <PageTitle size="page">{name}</PageTitle>
-            {/* Le lien menait à une 404 dès que la fiche n'était plus visible
-                (abonnement échu, fiche dépubliée) ; le serveur sait pourquoi,
-                autant le dire. */}
-            {isTeacherVisible(teacher, new Date()) ? (
+        <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <Avatar className="h-20 w-20 shrink-0 border border-border sm:h-24 sm:w-24">
+              <AvatarImage src={teacher.user.image || undefined} alt={name} />
+              <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
+
+            <div className="min-w-0">
+              <Eyebrow className="mb-2">
+                {[
+                  since ? `Votre prof depuis ${monthYear(since, zone)}` : null,
+                  `${lessons.length} ${lessons.length === 1 ? "cours" : "cours"}`,
+                  teacher.city,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Eyebrow>
+
+              <PageTitle size="page" className="sm:text-5xl">
+                {name}
+              </PageTitle>
+
+              {instruments.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {instruments.map((instrument) => (
+                    <InstrumentChip
+                      key={instrument.name}
+                      name={instrument.name}
+                      family={instrument.family}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {/* Le lien menait à une 404 dès que la fiche n'était plus visible
+                  (abonnement échu, fiche dépubliée) ; le serveur sait pourquoi,
+                  autant le dire. */}
+              {visible ? (
+                <Link
+                  href={`/profs/${teacher.slug}`}
+                  className="mt-3 inline-block text-sm text-primary hover:underline"
+                >
+                  Voir sa fiche publique →
+                </Link>
+              ) : (
+                <p className="mt-3 text-sm text-subtle">
+                  Fiche actuellement hors ligne.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href={`${basePath}?onglet=messages`}>
+                <MessageSquare className="h-4 w-4" />
+                Écrire
+              </Link>
+            </Button>
+            {visible ? (
+              <Button asChild>
+                <Link href={`/profs/${teacher.slug}`}>
+                  <CalendarPlus className="h-4 w-4" />
+                  Réserver un cours
+                </Link>
+              </Button>
+            ) : null}
+          </div>
+        </header>
+      </div>
+
+      <div className="grid gap-10 lg:grid-cols-[1fr_320px] lg:gap-12">
+        {/* --------------------------------------------------------- Onglets */}
+        <div className="flex min-w-0 flex-col gap-6">
+          <FicheTabs tabs={tabs} active={active} basePath={basePath} />
+
+          {active === "avis" ? (
+            <TeacherReview
+              teacherId={teacher.id}
+              canReview={reviewable.ok}
+              initial={
+                existingReview
+                  ? {
+                      rating: existingReview.rating,
+                      comment: existingReview.comment,
+                      published: existingReview.publishedAt !== null,
+                    }
+                  : null
+              }
+            />
+          ) : null}
+
+          {active === "messages" ? (
+            <>
+              <MarkThreadRead teacherId={teacher.id} studentId={student.id} />
+              <MessageThread
+                initial={messages}
+                me="STUDENT"
+                postUrl={`/api/student/teachers/${teacher.id}/messages`}
+                emptyLabel="Écrivez un message à votre prof."
+              />
+            </>
+          ) : null}
+
+          {active === "historique" ? (
+            <ul className="divide-y divide-border border-y border-border">
+              {teacher.bookings.map((b) => {
+                const documented =
+                  b.report &&
+                  (b.report.content ||
+                    b.report.attachments.length > 0 ||
+                    b.report.comments.length > 0);
+
+                return (
+                  <li
+                    key={b.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-4"
+                  >
+                    <p className="min-w-0 text-sm">
+                      <span className="font-medium">
+                        {lessonTitle(b.instrument.name, b.isTrial)}
+                      </span>
+                      <span className="text-muted">
+                        {` · ${dateFormat.format(b.startsAt)}`}
+                      </span>
+                    </p>
+                    <div className="flex shrink-0 items-center gap-3">
+                      {documented ? (
+                        <Link
+                          href={`${basePath}#cr-${b.id}`}
+                          className="flex items-center gap-1 py-2 text-sm text-primary hover:underline"
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                          Compte rendu
+                        </Link>
+                      ) : null}
+                      <Badge variant={LESSON_STATUS_VARIANTS[b.status]}>
+                        {STATUS_LABELS[b.status]}
+                      </Badge>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+
+          {active === "comptes-rendus" ? (
+            <>
+              {/* Marque les comptes rendus de ce prof comme lus : la pastille
+                  « Mes profs » tombe une fois l'onglet ouvert. */}
+              <MarkReportsSeen />
+              {reports.length === 0 ? (
+                <p className="rounded-[var(--radius-sm)] bg-surface px-4 py-8 text-center text-sm text-muted">
+                  Aucun compte rendu pour l&apos;instant. Votre prof en écrit un
+                  après le cours quand il y a matière.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-6">
+                  {/* Les filtres n'apparaissent qu'à partir du moment où ils
+                      servent : trois comptes rendus se lisent sans chercher. */}
+                  {reports.length >= 4 ? (
+                    <ListFilters
+                      searchKey="cr_q"
+                      searchPlaceholder="Rechercher dans les comptes rendus…"
+                      chips={
+                        reportInstruments.length >= 2
+                          ? [
+                              {
+                                key: "cr_instrument",
+                                label: "Instrument",
+                                options: reportInstruments,
+                              },
+                            ]
+                          : undefined
+                      }
+                      dateRange={{ fromKey: "cr_from", toKey: "cr_to" }}
+                    />
+                  ) : null}
+
+                  {visibleReports.length === 0 ? (
+                    <p className="rounded-[var(--radius-sm)] bg-surface px-4 py-8 text-center text-sm text-muted">
+                      Aucun compte rendu ne correspond à ces filtres.
+                    </p>
+                  ) : null}
+
+                  <ul className="flex flex-col divide-y divide-border">
+                    {visibleReports.map((b) => (
+                      <li
+                        key={b.id}
+                        id={`cr-${b.id}`}
+                        className="scroll-mt-20 py-8 first:pt-0"
+                      >
+                        <article className="flex flex-col gap-4">
+                          <div>
+                            <Eyebrow className="mb-2">
+                              <span className="first-letter:uppercase">
+                                {`${longDayFormat.format(b.startsAt)} · ${b.instrument.name}`}
+                              </span>
+                            </Eyebrow>
+                            <h2 className="font-display text-2xl font-medium text-foreground">
+                              {b.report!.title?.trim() ||
+                                lessonTitle(b.instrument.name, b.isTrial)}
+                            </h2>
+                            <p className="mt-1 text-sm text-subtle">
+                              {`Écrit le ${writtenFormat.format(b.report!.createdAt)}`}
+                            </p>
+                          </div>
+
+                          {/* Le HTML est assaini **ici**, à la frontière
+                              serveur : le composant de rendu n'importe aucun
+                              nettoyeur, et `sanitize-html` ne part pas dans le
+                              bundle client. */}
+                          <ReportViewer
+                            bookingId={b.id}
+                            me="STUDENT"
+                            report={{
+                              content: b.report!.content
+                                ? sanitizeReportHtml(b.report!.content)
+                                : null,
+                              attachments: b.report!.attachments,
+                              comments: b.report!.comments.map((c) => ({
+                                ...c,
+                                createdAt: c.createdAt.toISOString(),
+                              })),
+                            }}
+                          />
+                        </article>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        {/* ------------------------------------------------- Colonne de droite */}
+        <aside className="flex flex-col gap-8">
+          {nextLesson ? (
+            <section className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-elevated p-4 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
+                Prochain cours
+              </p>
+              <p className="font-display text-xl font-medium text-foreground first-letter:uppercase">
+                {dateFormat.format(nextLesson.startsAt)}
+              </p>
+              <p className="text-sm text-muted">
+                {lessonTitle(nextLesson.instrument.name, nextLesson.isTrial)}
+              </p>
+              {nextLesson.address ? (
+                <p className="text-sm text-muted">{nextLesson.address}</p>
+              ) : null}
+              <Link
+                href="/dashboard"
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Voir dans mes cours →
+              </Link>
+            </section>
+          ) : null}
+
+          {nextSlots && nextSlots.slots.length > 0 ? (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
+                Réserver à nouveau
+              </h2>
+              <p className="text-sm text-muted">
+                Ses prochains créneaux libres, à son heure.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {nextSlots.slots.map((slot) => (
+                  <Link
+                    key={slot.startsAt.toISOString()}
+                    href={`/profs/${teacher.slug}`}
+                    className="flex h-11 items-center rounded-full border border-border bg-elevated px-3 text-sm transition-colors hover:border-border-strong hover:bg-surface"
+                  >
+                    {formatSlotShort(slot.startsAt, nextSlots.timezone)}
+                  </Link>
+                ))}
+              </div>
               <Link
                 href={`/profs/${teacher.slug}`}
-                className="mt-1 inline-block text-sm text-primary hover:underline"
+                className="text-sm font-medium text-primary hover:underline"
               >
-                Voir la fiche publique
+                Tous ses créneaux →
               </Link>
-            ) : (
-              <p className="mt-1 text-sm text-subtle">
-                Fiche actuellement hors ligne.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+            </section>
+          ) : null}
 
-      <div className="grid grid-cols-3 gap-3">
-        <Stat value={stats.total} label="Cours" />
-        <Stat value={stats.upcoming} label="À venir" />
-        <Stat value={stats.completed} label="Terminés" />
-      </div>
+          {/* L'avis se dépose dans son onglet ; ici, seulement l'invitation ou
+              le rappel de ce qui est déjà en ligne. Deux formulaires pour un
+              seul avis se contrediraient. */}
+          {existingReview || reviewable.ok ? (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
+                Votre avis
+              </h2>
 
-      <FicheTabs tabs={tabs} active={active} basePath={basePath} />
-
-      {active === "avis" ? (
-        <TeacherReview
-          teacherId={teacher.id}
-          canReview={stats.completed > 0}
-          initial={
-            existingReview
-              ? {
-                  rating: existingReview.rating,
-                  comment: existingReview.comment,
-                  published: existingReview.publishedAt !== null,
-                }
-              : null
-          }
-        />
-      ) : null}
-
-      {active === "messages" ? (
-        <>
-          <MarkThreadRead teacherId={teacher.id} studentId={student.id} />
-          <MessageThread
-            initial={messages}
-            me="STUDENT"
-            postUrl={`/api/student/teachers/${teacher.id}/messages`}
-            emptyLabel="Écrivez un message à votre prof."
-          />
-        </>
-      ) : null}
-
-      {active === "historique" ? (
-        <ul className="divide-y divide-border border-y border-border">
-          {teacher.bookings.map((b) => {
-            const documented =
-              b.report &&
-              (b.report.content ||
-                b.report.attachments.length > 0 ||
-                b.report.comments.length > 0);
-
-            return (
-              <li
-                key={b.id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <p className="min-w-0 text-sm">
-                  <span className="font-medium">
-                    {lessonTitle(b.instrument.name, b.isTrial)}
-                  </span>
-                  <span className="text-muted">
-                    {" "}
-                    · {dateFormat.format(b.startsAt)}
-                  </span>
-                </p>
-                <div className="flex shrink-0 items-center gap-3">
-                  {documented ? (
-                    <Link
-                      href={`${basePath}?onglet=comptes-rendus#cr-${b.id}`}
-                      className="flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      Compte rendu
-                    </Link>
+              {existingReview ? (
+                <>
+                  <Stars value={existingReview.rating} size="md" />
+                  {existingReview.comment ? (
+                    <p className="text-sm text-muted">
+                      {`« ${existingReview.comment} »`}
+                    </p>
                   ) : null}
-                  <Badge
-                    variant={b.status === "CONFIRMED" ? "success" : "secondary"}
+                  {existingReview.teacherRepl ? (
+                    <div className="rounded-[var(--radius-sm)] bg-surface p-3">
+                      <p className="text-xs font-medium text-subtle">
+                        {`Réponse de ${name}`}
+                      </p>
+                      <p className="mt-1 text-sm text-muted">
+                        {existingReview.teacherRepl}
+                      </p>
+                    </div>
+                  ) : null}
+                  {existingReview.publishedAt === null ? (
+                    <p className="text-xs text-warning">
+                      Retiré par la modération : il n&apos;est plus visible sur
+                      sa fiche.
+                    </p>
+                  ) : null}
+                  <Link
+                    href={`${basePath}?onglet=avis`}
+                    className="text-sm font-medium text-primary hover:underline"
                   >
-                    {STATUS_LABELS[b.status] ?? b.status}
-                  </Badge>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-
-      {active === "comptes-rendus" ? (
-        <>
-          {/* Marque les comptes rendus de ce prof comme lus : la pastille
-              « Mes dossiers » tombe une fois l'onglet ouvert. */}
-          <MarkReportsSeen />
-          {reports.length === 0 ? (
-            <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
-              Aucun compte rendu pour l&apos;instant.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-4">
-            <ListFilters
-              searchKey="cr_q"
-              searchPlaceholder="Rechercher dans les comptes rendus…"
-              chips={
-                reportInstruments.length >= 2
-                  ? [
-                      {
-                        key: "cr_instrument",
-                        label: "Instrument",
-                        options: reportInstruments,
-                      },
-                    ]
-                  : undefined
-              }
-              dateRange={{ fromKey: "cr_from", toKey: "cr_to" }}
-            />
-
-            {visibleReports.length === 0 ? (
-              <p className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
-                Aucun compte rendu ne correspond à ces filtres.
-              </p>
-            ) : null}
-
-            <ul className="flex flex-col gap-3">
-              {visibleReports.map((b, i) => (
-                <li
-                  key={b.id}
-                  id={`cr-${b.id}`}
-                  className="scroll-mt-20 overflow-hidden rounded-lg border border-border"
-                >
-                  <CollapsibleReport
-                    title={b.report!.title?.trim() || lessonTitle(b.instrument.name, b.isTrial)}
-                    dateLabel={dateFormat.format(b.startsAt)}
-                    statusLabel={STATUS_LABELS[b.status] ?? b.status}
-                    statusVariant={b.status === "CONFIRMED" ? "success" : "secondary"}
-                    hashId={`cr-${b.id}`}
-                    attachmentCount={b.report!.attachments.length}
-                    commentCount={b.report!.comments.length}
-                    defaultOpen={i === 0}
+                    Modifier mon avis →
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <span
+                    aria-hidden
+                    className="flex items-center gap-0.5 text-accent"
                   >
-                    <ReportViewer
-                      bookingId={b.id}
-                      me="STUDENT"
-                      report={{
-                        content: b.report!.content
-                          ? sanitizeReportHtml(b.report!.content)
-                          : null,
-                        attachments: b.report!.attachments,
-                        comments: b.report!.comments.map((c) => ({
-                          ...c,
-                          createdAt: c.createdAt.toISOString(),
-                        })),
-                      }}
-                    />
-                  </CollapsibleReport>
-                </li>
-              ))}
-            </ul>
-          </div>
-          )}
-        </>
-      ) : null}
+                    {[1, 2, 3, 4, 5].map((position) => (
+                      <Star key={position} className="h-5 w-5" />
+                    ))}
+                  </span>
+                  <p className="text-sm text-muted">
+                    Vous avez suivi un cours avec {name} : votre avis aide les
+                    prochains élèves à choisir.
+                  </p>
+                  <Button asChild variant="outline" className="h-11 w-fit">
+                    <Link href={`${basePath}?onglet=avis`}>Écrire un avis</Link>
+                  </Button>
+                </>
+              )}
+            </section>
+          ) : null}
+        </aside>
+      </div>
     </div>
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3 text-center">
-      <p className="font-display text-2xl font-semibold">{value}</p>
-      <p className="text-xs text-muted">{label}</p>
-    </div>
-  );
+/** « août 2026 » — le mois où la relation a commencé, dans le fuseau du prof. */
+function monthYear(date: Date, timezone: string): string {
+  return date.toLocaleDateString("fr-FR", {
+    month: "long",
+    year: "numeric",
+    timeZone: timezone,
+  });
 }

@@ -2,10 +2,16 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
+import {
+  VISIBILITY_BLOCKER_LABELS,
+  visibilityBlocker,
+} from "@/components/teacher-visibility-notice";
 import { isStudentNews } from "@/lib/bookings/student-news";
 import { messageUnreadCount } from "@/lib/messages/unread-count";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { checkPublishable } from "@/lib/teacher/publishable";
+import { isSubscriptionActive } from "@/lib/teacher/visibility";
 
 /**
  * Porte d'entrée de l'espace connecté.
@@ -49,7 +55,25 @@ export default async function DashboardLayout({
       name: true,
       email: true,
       image: true,
-      teacherProfile: { select: { id: true, reportsSeenAt: true } },
+      teacherProfile: {
+        select: {
+          id: true,
+          reportsSeenAt: true,
+          // Pour la pastille de « Ma fiche » : ce qui empêche la fiche d'être
+          // trouvée. Avis et abonnement ayant quitté le menu, un abonnement
+          // expiré rendrait sinon la fiche invisible sans aucun signal.
+          status: true,
+          headline: true,
+          bio: true,
+          hourlyRateCents: true,
+          teachesOnline: true,
+          teachesInPerson: true,
+          teachesAtHome: true,
+          city: true,
+          stripeCurrentPeriodEnd: true,
+          _count: { select: { instruments: true, rules: true } },
+        },
+      },
       studentProfile: {
         select: { id: true, coursSeenAt: true, reportsSeenAt: true },
       },
@@ -66,11 +90,11 @@ export default async function DashboardLayout({
   // Compteurs de la barre latérale, en parallèle — un rôle n'en alimente que
   // les siens :
   // - « Demandes » (prof) : une demande en attente immobilise un créneau ;
-  // - « Mes cours » (élève) : le prof a tranché depuis la dernière visite (même
+  // - « Mes cours » (élève, l'accueil) : le prof a tranché depuis la dernière visite (même
   //   règle que `isStudentNews` ; un élève a peu de cours, on filtre en mémoire) ;
   // - « Messages » : fils non lus, comptés en une requête indexée plutôt qu'en
   //   rapatriant les messages (cf. `messageUnreadCount`).
-  // - « Comptes rendus » (prof) / « Mes dossiers » (élève) : commentaires de
+  // - « Élèves » (prof) / « Mes profs » (élève) : commentaires de
   //   compte rendu écrits par l'autre partie depuis la dernière consultation
   //   (`reportsSeenAt`), même patron que « Mes cours ».
   const teacherProfile = user.teacherProfile;
@@ -136,6 +160,30 @@ export default async function DashboardLayout({
         : Promise.resolve(0),
   ]);
 
+  // Point ambre sur « Ma fiche » tant que la fiche n'est pas trouvable — même
+  // règle (`visibilityBlocker`) que l'avis de l'accueil, ordonnée compléter →
+  // publier → s'abonner.
+  const blocker = teacherProfile
+    ? visibilityBlocker({
+        publishable: checkPublishable({
+          headline: teacherProfile.headline,
+          bio: teacherProfile.bio,
+          hourlyRateCents: teacherProfile.hourlyRateCents,
+          teachesOnline: teacherProfile.teachesOnline,
+          teachesInPerson: teacherProfile.teachesInPerson,
+          teachesAtHome: teacherProfile.teachesAtHome,
+          city: teacherProfile.city,
+          instrumentCount: teacherProfile._count.instruments,
+          availabilityRuleCount: teacherProfile._count.rules,
+        }).ok,
+        published: teacherProfile.status === "PUBLISHED",
+        subscribed: isSubscriptionActive(
+          teacherProfile.stripeCurrentPeriodEnd,
+          new Date()
+        ),
+      })
+    : null;
+
   return (
     <div className="lg:flex">
       <DashboardSidebar
@@ -144,11 +192,14 @@ export default async function DashboardLayout({
         user={{ name: user.name, email: user.email, image: user.image }}
         badges={{
           "/dashboard/prof/demandes": pendingCount,
-          "/dashboard/prof/comptes-rendus": teacherProfile ? reportCommentsUnread : 0,
-          "/dashboard/cours": studentNewsCount,
+          "/dashboard/prof/eleves": teacherProfile ? reportCommentsUnread : 0,
+          "/dashboard": studentProfile ? studentNewsCount : 0,
           "/dashboard/dossiers": studentProfile ? reportCommentsUnread : 0,
           "/dashboard/messages": messagesUnread,
         }}
+        attention={
+          blocker ? { "/dashboard/prof": VISIBILITY_BLOCKER_LABELS[blocker] } : {}
+        }
       />
       <main className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:py-10">
         <div className="mx-auto w-full max-w-5xl">{children}</div>

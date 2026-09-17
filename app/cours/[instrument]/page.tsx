@@ -57,14 +57,19 @@ const loadLanding = cache(async (slug: string) => {
   if (!instrument) return null;
 
   const [response, cities] = await Promise.all([
-    searchTeachers({
-      instrument: slug,
-      city: null,
-      mode: null,
-      maxRateCents: null,
-      trialOnly: false,
-      page: 1,
-    }),
+    searchTeachers(
+      {
+        instrument: slug,
+        city: null,
+        mode: null,
+        maxRateCents: null,
+        trialOnly: false,
+        page: 1,
+      },
+      // Même liste que /profs, donc mêmes prochains créneaux : c'est la
+      // disponibilité qui fait choisir, ici comme là-bas.
+      { withNextSlots: true }
+    ),
     getInstrumentCities(slug),
   ]);
 
