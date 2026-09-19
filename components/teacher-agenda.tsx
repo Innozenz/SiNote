@@ -18,7 +18,6 @@ import {
   Info,
   Loader2,
   MapPin,
-  MessageSquare,
   PenLine,
   Sparkles,
   ShieldAlert,
@@ -192,7 +191,15 @@ const HOUR_LINES = [
 const HATCH =
   "repeating-linear-gradient(45deg, var(--border-strong) 0, var(--border-strong) 2px, transparent 2px, transparent 7px)";
 
-const WEEKDAY_SHORT = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const WEEKDAY_SHORT = [
+  "lun.",
+  "mar.",
+  "mer.",
+  "jeu.",
+  "ven.",
+  "sam.",
+  "dim.",
+];
 
 const MODE_LABELS = LESSON_MODE_LABELS;
 
@@ -669,14 +676,14 @@ export function TeacherAgenda({
             <div className="-mx-2 overflow-x-auto overflow-y-clip px-2">
               <div className={cn(days > 1 ? "min-w-[44rem]" : "min-w-[18rem]")}>
                 <div className="flex">
-                  <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated" />
+                  <div className="sticky left-0 z-20 w-12 shrink-0 border-r border-border bg-background" />
                   {agenda.days.map((day) => (
                     <DayHeader key={day.date} day={day} />
                   ))}
                 </div>
 
                 <div className="flex" style={{ height }}>
-                  <div className="sticky left-0 z-20 w-12 shrink-0 bg-elevated">
+                  <div className="sticky left-0 z-20 w-12 shrink-0 border-r border-border bg-background">
                     {hourMarks(agenda.startMinute, agenda.endMinute).map(
                       (minute) => (
                         <span
@@ -733,18 +740,21 @@ export function TeacherAgenda({
                       </div>
                     ) : null}
 
-                    {/* Repère « maintenant », posé par-dessus la colonne du jour. */}
+                    {/* Repère « maintenant », posé par-dessus la colonne du
+                        jour. En rouge, la convention de tous les agendas — et
+                        non en or : l'or nomme l'étiquette éditoriale partout
+                        ailleurs dans le site, le dépenser ici le banaliserait. */}
                     {showNow ? (
                       <div
                         aria-hidden
-                        className="pointer-events-none absolute z-10 h-px bg-accent"
+                        className="pointer-events-none absolute z-10 h-0.5 bg-danger"
                         style={{
                           top: `${offset(nowMinute)}%`,
                           left: `${(todayIndex / agenda.days.length) * 100}%`,
                           width: `${100 / agenda.days.length}%`,
                         }}
                       >
-                        <span className="absolute -left-[3px] -top-[3px] h-[7px] w-[7px] rounded-full bg-accent" />
+                        <span className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-danger" />
                       </div>
                     ) : null}
                   </div>
@@ -903,11 +913,14 @@ function DayColumn({
     // C'est le fond qui porte l'information, la couche blanche des ouvertures
     // se posant par-dessus.
     <div className="relative flex-1 border-l border-border bg-surface-strong">
-      {/* Ouvertures : le blanc dit « réservable », sans avoir à l'écrire. */}
+      {/* Ouvertures : la crème claire de la carte dit « réservable », sans
+          avoir à l'écrire. `elevated` et non `background` : la grille vit dans
+          une carte `elevated`, et peindre les ouvertures du crème *du papier*
+          les rendait plus sombres que la carte — l'inverse de « éclairci ». */}
       {day.open.map((interval) => (
         <div
           key={`open-${interval.start}`}
-          className="absolute inset-x-0 bg-background"
+          className="absolute inset-x-0 bg-elevated"
           style={band(interval.start, interval.end)}
         />
       ))}
@@ -919,12 +932,12 @@ function DayColumn({
       {day.closed.map((interval) => (
         <div
           key={`closed-${interval.start}`}
-          className="absolute inset-x-0 flex items-center justify-center overflow-hidden bg-background"
+          className="absolute inset-x-0 flex items-center justify-center overflow-hidden bg-elevated"
           style={{ ...band(interval.start, interval.end), backgroundImage: HATCH }}
           title="Congé"
         >
           {interval.end - interval.start >= 45 ? (
-            <span className="pointer-events-none rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+            <span className="pointer-events-none rounded bg-elevated/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted">
               Congé
             </span>
           ) : null}
@@ -943,7 +956,7 @@ function DayColumn({
           recouvre). */}
       {fullyClosed ? (
         <span
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-background/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted"
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-elevated/85 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted"
           style={{ top: `${offset((rangeStart + rangeEnd) / 2)}%` }}
         >
           Fermé
@@ -1128,6 +1141,17 @@ function LessonInspector({
   const name = row.studentName ?? "Élève";
   const studentHref = `/dashboard/prof/eleves/${row.studentId}`;
 
+  // « 17 ans · responsable : Claire Martin » — l'âge et le responsable tiennent
+  // sur la même ligne, sous le nom : séparés, le second se lisait comme une
+  // alerte alors qu'un mineur dont le responsable est renseigné n'en est pas une.
+  const studentSubline = [
+    row.studentAge !== null ? `${row.studentAge} ans` : null,
+    row.studentAge === null && row.studentIsMinor ? "mineur" : null,
+    row.guardianContact ? `responsable : ${row.guardianContact}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   const facts: { label: string; value: React.ReactNode }[] = [
     {
       label: "Cours",
@@ -1145,7 +1169,18 @@ function LessonInspector({
     facts.push({ label: "Niveau", value: LEVEL_LABELS[row.studentLevel] });
   }
 
-  facts.push({ label: "Lieu", value: MODE_LABELS[row.mode] });
+  // Le lieu porte son icône, la même que sur les blocs de la grille : c'est le
+  // fait qu'on relit en dernier avant de confirmer.
+  const LieuIcon = MODE_ICONS[row.mode];
+  facts.push({
+    label: "Lieu",
+    value: (
+      <span className="inline-flex items-center gap-1.5">
+        <LieuIcon className="h-3.5 w-3.5 shrink-0 text-muted" />
+        {MODE_LABELS[row.mode]}
+      </span>
+    ),
+  });
 
   if (row.priceCents !== null) {
     facts.push({
@@ -1153,7 +1188,7 @@ function LessonInspector({
       value: (
         <span>
           {formatPrice(row.priceCents)}
-          <span className="text-subtle">, réglé à vous</span>
+          <span className="text-muted">, réglé à vous</span>
         </span>
       ),
     });
@@ -1197,7 +1232,7 @@ function LessonInspector({
         </p>
         {row.status === "PENDING" ? (
           <p className="mt-2 text-sm text-muted">
-            Demandé le {format(createdAt, { day: "numeric", month: "long" })},
+            Demandé {format(createdAt, { weekday: "long", day: "numeric" })},
             {waitedDays <= 0
               ? " aujourd'hui"
               : waitedDays === 1
@@ -1209,56 +1244,56 @@ function LessonInspector({
       </div>
 
       {/* L'élève : qui vient, et de quoi il faut se souvenir avant d'ouvrir la
-          porte — l'âge et le responsable d'un mineur en font partie. */}
-      <div className="flex items-center gap-3 border-y border-border py-3">
-        <Avatar className="h-10 w-10 shrink-0 border border-border">
+          porte — l'âge et le responsable d'un mineur en font partie, sur la
+          même ligne que l'âge : ce sont deux moitiés d'un même fait. */}
+      <div className="flex items-center gap-3 border-y border-border py-3.5">
+        <Avatar className="h-11 w-11 shrink-0 border border-border">
           <AvatarImage src={row.studentImage || undefined} alt={name} />
           <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium">{name}</p>
-          {row.studentAge !== null || row.studentIsMinor ? (
-            <p className="truncate text-xs text-muted">
-              {[
-                row.studentAge !== null ? `${row.studentAge} ans` : null,
-                row.studentIsMinor ? "mineur" : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+          {studentSubline ? (
+            <p className="truncate text-xs text-muted" title={studentSubline}>
+              {studentSubline}
             </p>
           ) : null}
         </div>
         <Link
           href={studentHref}
-          className="shrink-0 text-sm text-primary hover:underline"
+          className="shrink-0 text-xs text-primary hover:underline"
         >
           Fiche →
         </Link>
       </div>
 
-      {row.studentIsMinor ? (
-        <p className="flex items-start gap-2 rounded-md bg-primary-soft p-2 text-xs text-primary">
+      {/* Un mineur sans responsable joignable est le seul cas qui reste une
+          alerte : le prof ne peut ni prévenir, ni décaler. */}
+      {row.studentIsMinor && !row.guardianContact ? (
+        <p className="flex items-start gap-2 rounded-md bg-warning-soft p-2 text-xs text-warning">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          {row.guardianContact
-            ? `Responsable : ${row.guardianContact}`
-            : "Aucun contact de responsable renseigné."}
+          Aucun contact de responsable renseigné.
         </p>
       ) : null}
 
       <dl className="flex flex-col gap-2 text-sm">
         {facts.map((fact) => (
-          <div key={fact.label} className="flex items-start gap-3">
-            <dt className="w-16 shrink-0 text-subtle">{fact.label}</dt>
-            <dd className="min-w-0 flex-1">{fact.value}</dd>
+          <div
+            key={fact.label}
+            className="flex items-baseline justify-between gap-3"
+          >
+            <dt className="shrink-0 text-muted">{fact.label}</dt>
+            <dd className="min-w-0 text-right">{fact.value}</dd>
           </div>
         ))}
       </dl>
 
+      {/* Le message de l'élève, cité tel quel : en italique entre guillemets,
+          c'est sa voix et non celle de l'application. */}
       {row.studentMessage ? (
-        <p className="flex gap-2 rounded-md bg-surface p-3 text-sm text-muted">
-          <MessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
-          {row.studentMessage}
-        </p>
+        <blockquote className="rounded-md bg-surface px-3.5 py-3 text-[13px] italic leading-relaxed text-muted">
+          «&nbsp;{row.studentMessage}&nbsp;»
+        </blockquote>
       ) : null}
 
       <div className="flex flex-col gap-2">
@@ -1274,7 +1309,7 @@ function LessonInspector({
             ) : (
               <Check className="mr-2 h-4 w-4" />
             )}
-            Confirmer
+            Confirmer le cours
           </Button>
         ) : null}
 
@@ -1388,12 +1423,14 @@ function Legend() {
     { label: "Absent", className: "border-danger/40 bg-danger-soft" },
   ];
 
+  // Les pastilles reprennent **exactement** les fonds de la grille : une
+  // légende qui décale d'une nuance renvoie vers la mauvaise lecture.
   const grid = [
-    { label: "Ouvert", className: "border-border bg-background" },
+    { label: "Ouvert", className: "border-border-strong bg-elevated" },
     { label: "Fermé", className: "border-border bg-surface-strong" },
     {
       label: "Congé",
-      className: "border-border bg-background",
+      className: "border-border bg-elevated",
       style: { backgroundImage: HATCH },
     },
   ];

@@ -14,6 +14,7 @@ import {
   Video,
 } from "lucide-react";
 
+import { SectionTitle } from "@/components/editorial";
 import { InstrumentChip } from "@/components/instrument-chip";
 import {
   LESSON_STATUS_LABELS,
@@ -162,11 +163,28 @@ export function StudentLessons({
   );
   // « Passé » du point de vue de l'élève : le cours a eu lieu, que le prof
   // l'ait clôturé ou non. `toReview` est son attente à lui, pas la sienne.
-  const past = [...groups.toReview, ...groups.past]
-    .sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime())
-    .slice(0, PAST_SHOWN);
+  const allPast = [...groups.toReview, ...groups.past].sort(
+    (a, b) => b.startsAt.getTime() - a.startsAt.getTime()
+  );
+  const past = allPast.slice(0, PAST_SHOWN);
 
-  const hasMorePast = groups.toReview.length + groups.past.length > past.length;
+  const hasMorePast = allPast.length > past.length;
+
+  /**
+   * Compteur posé à droite du titre « Cours passés ». Il compte **tous** les
+   * cours passés, pas les dix montrés : c'est le bilan de la relation, et le
+   * lien vers l'historique complet est juste dessous. Un compte rendu ouvert
+   * mais vide n'en est pas un — le compter serait promettre une lecture.
+   */
+  const documentedCount = allPast.filter((row) => row.report?.documented).length;
+  const pastSummary = [
+    `${allPast.length} cours`,
+    documentedCount > 0
+      ? `${documentedCount} ${documentedCount === 1 ? "compte rendu" : "comptes rendus"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const cancel = async (id: string, reason?: string): Promise<boolean> => {
     setBusyId(id);
@@ -316,8 +334,8 @@ export function StudentLessons({
 
       {/* --------------------------------------------------------------- À venir */}
       {upcoming.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <SectionLabel>À venir</SectionLabel>
+        <section className="flex flex-col gap-3.5">
+          <SectionTitle>À venir</SectionTitle>
           <ul className="divide-y divide-border border-y border-border">
             {upcoming.map((row) => (
               <LessonRow
@@ -339,8 +357,14 @@ export function StudentLessons({
 
       {/* ---------------------------------------------------------- Cours passés */}
       {past.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <SectionLabel>Cours passés</SectionLabel>
+        <section className="flex flex-col gap-3.5">
+          <SectionTitle
+            trailing={
+              <span className="shrink-0 text-sm text-muted">{pastSummary}</span>
+            }
+          >
+            Cours passés
+          </SectionTitle>
           <ul className="divide-y divide-border border-y border-border">
             {past.map((row) => (
               <LessonRow
@@ -370,14 +394,6 @@ export function StudentLessons({
 
 /* -------------------------------------------------------------------------- */
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-      {children}
-    </h2>
-  );
-}
-
 /**
  * La seule carte de la page, et elle mérite son ombre : c'est la réponse à la
  * question qu'on vient poser — *c'est quand, et comment j'y vais ?*
@@ -405,57 +421,59 @@ function NextLessonCard({
   ].filter(Boolean);
 
   return (
-    <article className="flex flex-col gap-5 rounded-[var(--radius)] border border-border bg-elevated p-5 shadow-lg sm:p-6">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
-          Prochain cours
-        </p>
-        <p
-          className="mt-2 font-display font-semibold leading-tight text-foreground first-letter:uppercase"
-          style={{ fontSize: "clamp(1.75rem, 6vw, 2.5rem)" }}
-        >
-          {dayAndTime(lesson, now)}
-        </p>
-        <p className="mt-1 text-sm text-muted">{details.join(" · ")}</p>
-      </div>
+    <article className="flex flex-col items-start justify-between gap-6 rounded-[var(--radius)] border border-border bg-elevated p-5 shadow-lg sm:flex-row sm:items-center sm:p-6 sm:px-7">
+      <div className="flex min-w-0 flex-col gap-3.5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-accent">
+            Prochain cours
+          </p>
+          <p
+            className="mt-1 font-display font-semibold leading-tight text-foreground first-letter:uppercase"
+            style={{ fontSize: "clamp(1.75rem, 6vw, 2.5rem)" }}
+          >
+            {dayAndTime(lesson, now)}
+          </p>
+          <p className="mt-1 text-sm text-muted">{details.join(" · ")}</p>
+        </div>
 
-      <div className="flex items-center gap-3 border-t border-border pt-4">
-        <Avatar className="h-11 w-11 shrink-0 border border-border">
-          <AvatarImage src={lesson.teacherImage || undefined} alt={name} />
-          <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
+        {/* Avatar, nom et pastille sur une seule ligne : c'est une signature,
+            pas une fiche. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Avatar className="h-10 w-10 shrink-0 border border-border">
+            <AvatarImage src={lesson.teacherImage || undefined} alt={name} />
+            <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
           <Link
             href={`/dashboard/dossiers/${lesson.teacherId}`}
             className="font-medium hover:underline"
           >
             {name}
           </Link>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <InstrumentChip
-              name={lesson.instrumentName}
-              family={lesson.instrumentFamily}
-            />
-            {lesson.isTrial ? (
-              <Badge variant="secondary">
-                <Sparkles className="h-3 w-3" />
-                Essai
-              </Badge>
-            ) : null}
-          </div>
+          <InstrumentChip
+            name={lesson.instrumentName}
+            family={lesson.instrumentFamily}
+          />
+          {lesson.isTrial ? (
+            <Badge variant="secondary">
+              <Sparkles className="h-3 w-3" />
+              Essai
+            </Badge>
+          ) : null}
         </div>
+
+        {lesson.address ? (
+          <p className="flex items-start gap-2 text-sm text-muted">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-subtle" />
+            {lesson.address}
+          </p>
+        ) : null}
       </div>
 
-      {lesson.address ? (
-        <p className="flex items-start gap-2 text-sm text-muted">
-          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-subtle" />
-          {lesson.address}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-3">
+      {/* L'action de la journée à droite, et sous elle seulement l'issue de
+          secours : annuler ne doit pas peser autant que rejoindre. */}
+      <div className="flex w-full shrink-0 flex-col items-start gap-1 sm:w-auto sm:items-end">
         {lesson.meetingUrl ? (
-          <Button asChild>
+          <Button asChild className="h-11">
             <a
               href={lesson.meetingUrl}
               target="_blank"
@@ -467,12 +485,11 @@ function NextLessonCard({
           </Button>
         ) : null}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-11 text-subtle hover:text-danger"
+        <button
+          type="button"
           disabled={busy}
           onClick={onCancel}
+          className="flex h-11 items-center gap-1.5 text-xs text-muted transition-colors hover:text-danger disabled:opacity-60"
         >
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -480,7 +497,7 @@ function NextLessonCard({
             <CalendarX className="h-3.5 w-3.5" />
           )}
           Annuler ce cours
-        </Button>
+        </button>
       </div>
     </article>
   );
@@ -512,10 +529,10 @@ function LessonRow({
     });
 
   return (
-    <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:gap-4">
+    <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-5">
       {/* Bloc date : largeur fixe dès que la place le permet, pour que les
           lignes s'alignent et se lisent en colonne. */}
-      <div className="shrink-0 sm:w-28">
+      <div className="shrink-0 sm:w-[150px]">
         <p className="text-sm font-medium text-foreground first-letter:uppercase">
           {row.startsAt.toLocaleDateString("fr-FR", {
             weekday: "short",
@@ -529,7 +546,7 @@ function LessonRow({
         </p>
       </div>
 
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <Avatar className="h-9 w-9 shrink-0 border border-border">
           <AvatarImage src={row.teacherImage || undefined} alt={name} />
           <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>
@@ -553,42 +570,12 @@ function LessonRow({
               {`Motif : ${row.cancellationReason}`}
             </p>
           ) : null}
-
-          {onCancel || onReview ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {onReview ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-11"
-                  onClick={onReview}
-                >
-                  <Star className="h-3.5 w-3.5 fill-accent text-accent" />
-                  Donner un avis
-                </Button>
-              ) : null}
-              {onCancel ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 text-subtle hover:text-danger"
-                  disabled={busy}
-                  onClick={onCancel}
-                >
-                  {busy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <CalendarX className="h-3.5 w-3.5" />
-                  )}
-                  Annuler
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 sm:justify-end">
+      {/* État et action côte à côte, à droite : l'état dit où en est le cours,
+          l'action est la seule chose qu'on puisse en faire. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2.5 sm:justify-end">
         {row.isTrial ? (
           <Badge variant="secondary">
             <Sparkles className="h-3 w-3" />
@@ -598,6 +585,34 @@ function LessonRow({
         <Badge variant={LESSON_STATUS_VARIANTS[row.status]}>
           {STATUS_LABELS[row.status]}
         </Badge>
+
+        {onReview ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11"
+            onClick={onReview}
+          >
+            <Star className="h-3.5 w-3.5 fill-accent text-accent" />
+            Donner un avis
+          </Button>
+        ) : null}
+        {onCancel ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-11 text-subtle hover:text-danger"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            {busy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CalendarX className="h-3.5 w-3.5" />
+            )}
+            Annuler
+          </Button>
+        ) : null}
       </div>
     </li>
   );
@@ -623,7 +638,9 @@ function ReportOrMode({ row, isOver }: { row: Enriched; isOver: boolean }) {
 
     return (
       <Link
-        href={`/dashboard/dossiers/${row.teacherId}?onglet=comptes-rendus#cr-${row.id}`}
+        /* `cr` désigne le compte rendu **déplié** côté serveur ; l'ancre
+           n'existe que pour le défilement, et le serveur ne la lit pas. */
+        href={`/dashboard/dossiers/${row.teacherId}?onglet=comptes-rendus&cr=${row.id}#cr-${row.id}`}
         className="mt-0.5 flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
       >
         <FileText className="h-3.5 w-3.5" />

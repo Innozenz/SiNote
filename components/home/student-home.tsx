@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { AlertCircle, Check, Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 
 import { MarkCoursSeen } from "@/components/mark-cours-seen";
-import { PageHeader } from "@/components/editorial";
+import { PageHeader, SectionTitle } from "@/components/editorial";
 import { StudentLessons, type StudentBookingRow } from "@/components/student-bookings";
+import { LEVEL_LABELS } from "@/components/student-profile-detail";
 import { StudentMonth } from "@/components/student-month";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -282,15 +283,30 @@ export async function StudentHome({
   const issues = checkStudentProfile(student, now);
   const minor = isMinor(student.birthDate, now);
 
+  const instrumentsOk =
+    student.instruments.length > 0 &&
+    student.instruments.every((entry) => entry.level !== null);
+
+  // Nommer ce qui est rempli plutôt que le déclarer rempli : « Guitare
+  // électrique · intermédiaire » se relit, « Instruments renseignés » demande
+  // d'aller vérifier. Le premier instrument suffit à reconnaître son profil.
+  const firstFilled = student.instruments.find((entry) => entry.level !== null);
+
   const checks = [
     {
       label:
         student.instruments.length === 0
           ? "Aucun instrument renseigné"
-          : "Instruments et niveaux renseignés",
-      ok:
-        student.instruments.length > 0 &&
-        student.instruments.every((entry) => entry.level !== null),
+          : instrumentsOk && firstFilled
+            ? [
+                firstFilled.instrument.name,
+                LEVEL_LABELS[firstFilled.level!].toLowerCase(),
+              ].join(" · ") +
+              (student.instruments.length > 1
+                ? ` (+${student.instruments.length - 1})`
+                : "")
+            : "Niveau à choisir",
+      ok: instrumentsOk,
       href: "/dashboard/cours/profil",
     },
     {
@@ -370,14 +386,14 @@ export async function StudentHome({
         }
       />
 
-      <div className="grid gap-10 lg:grid-cols-[1fr_320px] lg:gap-12">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14">
         <StudentLessons
           initial={rows}
           reviewableTeacherIds={reviewableTeacherIds}
           responseHours={responseHours}
         />
 
-        <aside className="flex flex-col gap-10">
+        <aside className="flex flex-col gap-8">
           <StudentMonth
             month={studentMonth}
             previousHref={`${monthBase}${shiftMonth(month, -1)}`}
@@ -385,18 +401,16 @@ export async function StudentHome({
           />
 
           {teachers.length > 0 ? (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-                Mes profs
-              </h2>
-              <ul className="divide-y divide-border border-y border-border">
+            <section className="flex flex-col gap-3.5">
+              <SectionTitle>Mes profs</SectionTitle>
+              <ul className="flex flex-col">
                 {teachers.map((teacher) => (
                   <li key={teacher.id}>
                     <Link
                       href={`/dashboard/dossiers/${teacher.id}`}
-                      className="-mx-2 flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-3 transition-colors hover:bg-surface"
+                      className="-mx-2 flex items-center gap-3 rounded-[var(--radius-sm)] px-2 py-2.5 transition-colors hover:bg-surface"
                     >
-                      <Avatar className="h-9 w-9 shrink-0 border border-border">
+                      <Avatar className="h-10 w-10 shrink-0 border border-border">
                         <AvatarImage
                           src={teacher.image || undefined}
                           alt={teacher.name}
@@ -421,6 +435,7 @@ export async function StudentHome({
                             .join(" · ")}
                         </p>
                       </div>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-subtle" />
                     </Link>
                   </li>
                 ))}
@@ -429,26 +444,31 @@ export async function StudentHome({
               {findMoreHref && firstInstrument ? (
                 <Link
                   href={findMoreHref}
-                  className="text-sm font-medium text-primary hover:underline"
+                  className="flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                 >
-                  {`Trouver un prof de ${firstInstrument.name.toLowerCase()} à ${student.city} →`}
+                  <Search className="h-3.5 w-3.5" />
+                  {`Trouver un prof de ${firstInstrument.name.toLowerCase()} à ${student.city}`}
                 </Link>
               ) : null}
             </section>
           ) : null}
 
-          <section className="flex flex-col gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-              Mon profil
-            </h2>
-            <ul className="flex flex-col gap-2">
+          <section className="flex flex-col gap-3.5">
+            <SectionTitle>Mon profil</SectionTitle>
+            {/* Pastilles pleines plutôt qu'icônes : trois lignes qui se lisent
+                d'un coup d'œil, vert pour ce qui est fait, ambre pour ce qui
+                bloque — et le seul lien de la colonne est posé à droite, là où
+                on va le chercher. */}
+            <ul className="flex flex-col gap-2.5 text-sm">
               {checks.map((check) => (
-                <li key={check.label} className="flex items-start gap-2 text-sm">
-                  {check.ok ? (
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                  ) : (
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                  )}
+                <li key={check.label} className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full",
+                      check.ok ? "bg-success" : "bg-warning"
+                    )}
+                  />
                   <span
                     className={cn(
                       "min-w-0 flex-1",
@@ -456,18 +476,15 @@ export async function StudentHome({
                     )}
                   >
                     {check.label}
-                    {check.ok ? null : (
-                      <>
-                        {" — "}
-                        <Link
-                          href={check.href}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          Ajouter
-                        </Link>
-                      </>
-                    )}
                   </span>
+                  {check.ok ? null : (
+                    <Link
+                      href={check.href}
+                      className="shrink-0 whitespace-nowrap text-[0.8125rem] font-medium text-primary hover:underline"
+                    >
+                      Ajouter
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>

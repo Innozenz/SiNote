@@ -197,7 +197,7 @@ export default function TeachLandingPage() {
         {/* Fonctionnement, comme l'accueil : quatre mesures numérotées,
             séparées par des filets. */}
         <section className="border-t border-border">
-          <div className="mx-auto max-w-5xl px-4 py-16">
+          <div className="mx-auto max-w-[82rem] px-4 sm:px-8 py-16">
             <SectionHead>Comment ça marche</SectionHead>
 
             <ol className="mt-10 grid gap-px overflow-hidden rounded-[var(--radius)] border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">

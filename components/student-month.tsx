@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { SectionTitle } from "@/components/editorial";
 import type { MonthMark, StudentMonth } from "@/lib/student/month";
 import { cn } from "@/lib/utils";
 
@@ -55,38 +56,38 @@ export function StudentMonth({
     .reduce((sum, cell) => sum + cell.count, 0);
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-medium text-foreground first-letter:uppercase">
-          {monthTitle(month.month)}
-        </h2>
+    <section className="flex flex-col gap-3.5">
+      {/* Deux cibles de 44 px : sur téléphone, la navigation du mois est ce
+          qu'on touche le plus souvent dans cette colonne. */}
+      <SectionTitle
+        trailing={
+          <span className="-my-3 flex shrink-0 items-center">
+            <Link
+              href={previousHref}
+              aria-label="Mois précédent"
+              className="flex h-11 w-9 items-center justify-center rounded-[var(--radius-sm)] text-subtle transition-colors hover:bg-surface hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+            <Link
+              href={nextHref}
+              aria-label="Mois suivant"
+              className="flex h-11 w-9 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-surface hover:text-foreground"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </span>
+        }
+      >
+        {monthTitle(month.month)}
+      </SectionTitle>
 
-        {/* Deux cibles de 44 px : sur téléphone, la navigation du mois est ce
-            qu'on touche le plus souvent dans cette colonne. */}
-        <div className="flex items-center gap-1">
-          <Link
-            href={previousHref}
-            aria-label="Mois précédent"
-            className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-surface hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-          <Link
-            href={nextHref}
-            aria-label="Mois suivant"
-            className="flex h-11 w-11 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-colors hover:bg-surface hover:text-foreground"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-y-1">
+      <div className="grid grid-cols-7 gap-1 text-center">
         {WEEKDAY_INITIALS.map((initial, index) => (
           <div
             key={`${initial}-${index}`}
             aria-hidden
-            className="pb-1 text-center text-[0.7rem] font-medium uppercase tracking-[0.1em] text-subtle"
+            className="text-xs text-muted"
           >
             {initial}
           </div>
@@ -100,29 +101,30 @@ export function StudentMonth({
                 ? `${cell.count} ${cell.count === 1 ? "cours" : "cours"} le ${dayTitle(cell.date)}`
                 : undefined
             }
-            className="flex flex-col items-center gap-1 py-1"
+            className={cn(
+              "relative rounded-[var(--radius-sm)] py-2 text-sm tabular-nums",
+              cell.isToday
+                ? "bg-primary font-semibold text-primary-foreground"
+                : cell.inMonth
+                  ? "text-foreground"
+                  : "text-subtle"
+            )}
           >
-            <span
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-full text-sm tabular-nums",
-                cell.isToday
-                  ? "bg-primary font-semibold text-primary-foreground"
-                  : cell.inMonth
-                    ? "text-foreground"
-                    : "text-subtle"
-              )}
-            >
-              {Number(cell.date.slice(8, 10))}
-            </span>
+            {Number(cell.date.slice(8, 10))}
 
-            {/* Hauteur réservée même sans pastille : sans elle, les lignes
-                sautent d'un jour à l'autre et la grille ondule. */}
-            <span className="flex h-1.5 items-center justify-center gap-0.5">
+            {/* Pastilles posées dans la case, pas sous elle : une ligne de
+                hauteur réservée faisait onduler la grille. */}
+            <span className="absolute inset-x-0 bottom-0.5 flex items-center justify-center gap-0.5">
               {cell.marks.map((mark) => (
                 <span
                   key={mark}
                   aria-hidden
-                  className={cn("h-1.5 w-1.5 rounded-full", MARK_STYLES[mark])}
+                  /* 6 px plutôt que 4 : « en attente » est un anneau, et un
+                     anneau de 4 px avec un filet de 1 px ne se voit plus. */
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    cell.isToday ? "bg-primary-foreground" : MARK_STYLES[mark]
+                  )}
                 />
               ))}
             </span>
@@ -136,7 +138,7 @@ export function StudentMonth({
           : `${total} cours ce mois-ci.`}
       </p>
 
-      <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-xs text-muted">
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         {LEGEND.map((mark) => (
           <li key={mark} className="flex items-center gap-1.5">
             <span

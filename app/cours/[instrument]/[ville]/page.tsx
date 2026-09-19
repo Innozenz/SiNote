@@ -13,6 +13,7 @@ import {
 import { SiteHeader } from "@/components/site-header";
 import { TeacherResultList } from "@/components/teacher-result-list";
 import { Button } from "@/components/ui/button";
+import { instrumentInProse } from "@/lib/instruments/prose";
 import prisma from "@/lib/prisma";
 import { searchTeachers } from "@/lib/search/teachers";
 import {
@@ -86,8 +87,8 @@ export async function generateMetadata({
   }
 
   const { instrument, city, response } = data;
-  const title = `Cours de ${instrument.name} à ${city.name} — trouvez votre prof`;
-  const description = `Cours de ${instrument.name} à ${city.name} : comparez les professeurs près de chez vous, consultez leurs disponibilités et réservez votre cours en ligne sur SiNote.`;
+  const title = `Cours de ${instrumentInProse(instrument.name)} à ${city.name} — trouvez votre prof`;
+  const description = `Cours de ${instrumentInProse(instrument.name)} à ${city.name} : comparez les professeurs près de chez vous, consultez leurs disponibilités et réservez votre cours en ligne sur SiNote.`;
 
   return {
     title,
@@ -119,11 +120,14 @@ export default async function InstrumentCityCoursePage({
   const breadcrumb = [
     { name: "Accueil", path: "/" },
     { name: "Cours de musique", path: "/profs" },
-    { name: `Cours de ${instrument.name}`, path: instrumentPath(instrumentSlug) },
+    { name: `Cours de ${instrumentInProse(instrument.name)}`, path: instrumentPath(instrumentSlug) },
     { name: city.name },
   ];
 
-  const faq = landingFaq(instrument.name, city.name);
+  // Dans une phrase — « Cours de … » en est une — le nom prend la minuscule ;
+  // les sigles (MAO, DJ) gardent leurs capitales.
+  const prose = instrumentInProse(instrument.name);
+  const faq = landingFaq(prose, city.name);
 
   return (
     <>
@@ -153,7 +157,7 @@ export default async function InstrumentCityCoursePage({
       />
 
       <SiteHeader />
-      <main className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-10 sm:py-14">
+      <main className="mx-auto flex max-w-[82rem] flex-col gap-12 px-4 sm:px-8 py-10 sm:py-14">
         <div className="flex flex-col gap-6">
           <LandingBreadcrumb items={breadcrumb} />
 
@@ -161,7 +165,7 @@ export default async function InstrumentCityCoursePage({
 
           <PageHeader
             eyebrow={`Cours de musique à ${city.name}`}
-            title={`Cours de ${instrument.name} à ${city.name}`}
+            title={`Cours de ${prose} à ${city.name}`}
             titleClassName="uppercase"
             meta={
               <p className="text-sm text-muted">
@@ -173,7 +177,7 @@ export default async function InstrumentCityCoursePage({
           />
 
           <p className="max-w-3xl text-lg text-muted">
-            {instrumentIntro(instrument.name, instrument.family, city.name)}
+            {instrumentIntro(prose, instrument.family, city.name)}
           </p>
 
           <div className="flex flex-wrap gap-3">
@@ -184,7 +188,7 @@ export default async function InstrumentCityCoursePage({
             </Button>
             <Button variant="outline" asChild>
               <Link href={instrumentPath(instrumentSlug)}>
-                Cours de {instrument.name} partout
+                Cours de {prose} partout
               </Link>
             </Button>
           </div>
@@ -204,20 +208,20 @@ export default async function InstrumentCityCoursePage({
                 ) : undefined
               }
             >
-              Professeurs de {instrument.name} à {city.name}
+              Professeurs de {prose} à {city.name}
             </SectionTitle>
             <TeacherResultList results={results} />
           </section>
         ) : (
           <section className="flex flex-col items-start gap-4 border-y border-border py-10">
             <p className="text-muted">
-              Aucun professeur de {instrument.name} à {city.name} pour le moment.
+              Aucun professeur de {prose} à {city.name} pour le moment.
               Élargissez à toute la France, ou tentez la visio.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
                 <Link href={instrumentPath(instrumentSlug)}>
-                  Cours de {instrument.name} partout
+                  Cours de {prose} partout
                 </Link>
               </Button>
               <Button variant="outline" asChild>
@@ -230,8 +234,8 @@ export default async function InstrumentCityCoursePage({
         )}
 
         <section className="flex max-w-3xl flex-col gap-4">
-          <SectionTitle>{whyLearnTitle(instrument.name)}</SectionTitle>
-          <p className="text-muted">{whyLearn(instrument.name, instrument.family)}</p>
+          <SectionTitle>{whyLearnTitle(prose)}</SectionTitle>
+          <p className="text-muted">{whyLearn(prose, instrument.family)}</p>
         </section>
 
         {cityInstruments.length > 1 ? (
@@ -249,7 +253,7 @@ export default async function InstrumentCityCoursePage({
 
         {otherCities.length > 1 ? (
           <LandingLinkCloud
-            title={`Cours de ${instrument.name} dans d'autres villes`}
+            title={`Cours de ${prose} dans d'autres villes`}
             links={otherCities
               .filter((entry) => entry.slug !== city.slug)
               .slice(0, 16)
@@ -267,7 +271,7 @@ export default async function InstrumentCityCoursePage({
           <Eyebrow>Vous enseignez à {city.name} ?</Eyebrow>
           <p className="max-w-2xl text-lg text-muted">
             Créez votre fiche, fixez vos tarifs et recevez des demandes de cours
-            de {instrument.name} à {city.name}. Sans commission sur vos cours.
+            de {prose} à {city.name}. Sans commission sur vos cours.
           </p>
           <Button asChild>
             <Link href="/enseigner">Devenir professeur</Link>

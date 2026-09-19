@@ -32,11 +32,27 @@ export function TeacherReviews({
   if (count === 0 || average === null) {
     return (
       <section className="flex flex-col gap-4">
-        <SectionTitle>Avis</SectionTitle>
-        <p className="text-sm text-muted">
-          Ce prof n&apos;a pas encore reçu d&apos;avis. Les avis sont écrits par
-          des élèves ayant réellement suivi un cours.
-        </p>
+        <SectionTitle
+          trailing={
+            <span className="text-sm text-muted">
+              Écrits par des élèves ayant suivi un cours
+            </span>
+          }
+        >
+          Avis
+        </SectionTitle>
+        <div className="flex items-center gap-5 py-1.5">
+          <span
+            aria-hidden
+            className="font-display text-[3.5rem] font-semibold leading-none text-foreground"
+          >
+            —
+          </span>
+          <p className="max-w-md text-sm leading-relaxed text-muted">
+            Ce prof n&apos;a pas encore reçu d&apos;avis. Le premier s&apos;écrira
+            après un cours clôturé, et sera signé du prénom de l&apos;élève.
+          </p>
+        </div>
       </section>
     );
   }

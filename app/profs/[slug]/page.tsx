@@ -20,7 +20,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { TeacherReviews } from "@/components/teacher-reviews";
-import { RatingBadge } from "@/components/ui/stars";
 import { FAMILY_STYLES } from "@/lib/instruments/family";
 import {
   getPublicReviews,
@@ -29,8 +28,10 @@ import {
 import { summarizeFromCounts } from "@/lib/reviews/summary";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { instrumentInProse } from "@/lib/instruments/prose";
 import { citySlug, instrumentCityPath, instrumentPath } from "@/lib/seo/landing";
 import { getNextSlotsForTeachers } from "@/lib/teacher/next-slots";
+import { placeLine } from "@/lib/teacher/places";
 import { summarizeOpenings } from "@/lib/teacher/openings-summary";
 import { getPublicTeacher } from "@/lib/teacher/public-profile";
 import { formatSlotLong } from "@/lib/teacher/slot-label";
@@ -177,23 +178,47 @@ export default async function TeacherPublicPage({
   ).map((level) => LEVEL_LABELS[level]);
 
   /**
-   * La ligne de faits.
+   * La ligne de faits : une valeur en chiffres d'affichage, une légende en
+   * dessous qui la qualifie en une demi-phrase (« 3 cours » / « donnés via la
+   * plateforme »). C'est ce qui permet de la parcourir des yeux sans lire.
    *
    * Seules les cellules qui ont une valeur sont rendues — « 0 cours donnés »
    * n'inspire rien et « Niveaux : — » est du bruit. En dessous de deux, la
    * ligne n'est pas une ligne : elle n'est pas rendue du tout.
    */
+  const since = teacher.createdAt.toLocaleDateString("fr-FR", {
+    month: "long",
+    year: "numeric",
+    timeZone: teacher.user.timezone,
+  });
+
   const facts = [
-    age !== null ? { label: "Âge", value: `${age} ans` } : null,
+    // L'ancienneté accompagne l'âge quand le prof l'affiche ; sinon elle tient
+    // la cellule seule plutôt que de disparaître avec lui — c'est le signal de
+    // confiance, pas l'âge.
+    age !== null
+      ? { value: `${age} ans`, legend: `Sur SiNote depuis ${since}` }
+      : { value: since, legend: "inscrit sur SiNote depuis" },
     lessonsGiven > 0
       ? {
-          label: "Cours donnés",
-          value: String(lessonsGiven),
+          value: `${lessonsGiven} cours`,
+          legend: "donnés via la plateforme",
         }
       : null,
-    { label: "Durée du cours", value: `${teacher.defaultDurationMin} min` },
-    levels.length > 0 ? { label: "Niveaux", value: levels.join(" · ") } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+    {
+      value: `${teacher.defaultDurationMin} min`,
+      legend: "durée d’un cours",
+    },
+    levels.length > 0
+      ? {
+          value: levels.length >= 3 ? "Tous niveaux" : levels.join(" · "),
+          legend:
+            levels.length > 1
+              ? `${levels[0].toLowerCase()} à ${levels[levels.length - 1].toLowerCase()}`
+              : "seul niveau enseigné",
+        }
+      : null,
+  ].filter(Boolean) as { value: string; legend: string }[];
 
   const modes = [
     teacher.teachesInPerson && {
@@ -228,19 +253,10 @@ export default async function TeacherPublicPage({
   /**
    * L'eyebrow dit d'un trait où le cours a lieu — « Toulouse · chez le prof,
    * chez vous ou en visio ». Composé depuis les trois booléens, donc jamais une
-   * modalité que le prof n'a pas cochée.
+   * modalité que le prof n'a pas cochée. Même fonction que la ligne des
+   * résultats de recherche : les deux ne peuvent pas diverger.
    */
-  const places = [
-    teacher.teachesInPerson ? "chez le prof" : null,
-    teacher.teachesAtHome ? "chez vous" : null,
-    teacher.teachesOnline ? "en visio" : null,
-  ].filter(Boolean) as string[];
-  const eyebrow = [
-    teacher.city,
-    places.length > 0 ? joinWithOr(places) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const eyebrow = placeLine(teacher.city, teacher);
 
   // Retour vers la page de cours correspondante plutôt que vers `/profs` : le
   // hub `/cours/*` est plus riche, et le lien fait aussi du maillage interne.
@@ -250,14 +266,14 @@ export default async function TeacherPublicPage({
         href: teacher.city
           ? instrumentCityPath(instruments[0].slug, citySlug(teacher.city))
           : instrumentPath(instruments[0].slug),
-        label: `Cours de ${instruments[0].name}${teacher.city ? ` à ${teacher.city}` : ""}`,
+        label: `Cours de ${instrumentInProse(instruments[0].name)}${teacher.city ? ` à ${teacher.city}` : ""}`,
       }
     : { href: "/profs", label: "Tous les profs" };
 
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-5xl px-4 py-10">
+      <main className="mx-auto max-w-[82rem] px-4 sm:px-8 py-10">
         {/* Données structurées : ce qui permet aux moteurs de comprendre qu'il
             s'agit d'un service de cours, et non d'une page quelconque. */}
         <script
@@ -322,73 +338,66 @@ export default async function TeacherPublicPage({
               {back.label}
             </Link>
 
-            <header className="flex flex-col gap-4 border-b border-border pb-8">
-              {teacher.user.image ? (
-                <Avatar className="h-32 w-32 border border-border">
+            {/* Portrait à gauche, identité à droite — la mise en page d'un
+                programme de concert. La photo est toujours rendue, avec
+                l'initiale gravée à défaut : sans elle, l'en-tête d'un prof
+                sans portrait se décalait contre la marge. */}
+            <header className="grid gap-6 border-b border-border pb-8 sm:grid-cols-[128px_minmax(0,1fr)] sm:gap-8">
+              <Avatar className="h-32 w-32 border border-border bg-surface-strong">
+                {teacher.user.image ? (
                   <AvatarImage src={teacher.user.image} alt={name} />
-                  <AvatarFallback className="font-display text-3xl">
-                    {name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              ) : null}
-
-              {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
-
-              {/* Titre démesuré, mais en classes : `PageTitle size="display"`
-                  pose sa propre taille en style inline, qu'aucune classe ne
-                  peut alors dépasser. `size="page"` n'en pose pas, et
-                  tailwind-merge laisse gagner celles écrites ici. */}
-              <PageTitle
-                size="page"
-                className="text-[2.75rem] leading-[0.92] sm:text-6xl lg:text-7xl"
-              >
-                {name}
-              </PageTitle>
-
-              {teacher.headline ? (
-                <p className="max-w-2xl font-display text-xl italic leading-snug text-muted sm:text-2xl">
-                  {teacher.headline}
-                </p>
-              ) : null}
-
-              {/* La note juste sous le nom : c'est le premier élément que
-                  cherche un élève qui hésite entre deux fiches. */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <RatingBadge
-                  average={summary.average}
-                  count={summary.count}
-                  size="md"
-                />
-                {summary.count === 0 ? (
-                  <span className="text-sm text-subtle">
-                    Pas encore d’avis
-                  </span>
                 ) : null}
-              </div>
+                <AvatarFallback className="font-display text-5xl text-muted">
+                  {name.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
 
-              {/* Pastilles cliquables vers la page de cours de l'instrument :
-                  du maillage interne (chaque fiche pointe vers les hubs
-                  /cours/*) autant qu'un raccourci pour l'élève. La couleur
-                  nomme la famille, et rien d'autre. */}
-              <div className="flex flex-wrap gap-2">
-                {teacher.instruments.map(({ instrument }) => (
-                  <Link
-                    key={instrument.slug}
-                    href={`/cours/${instrument.slug}`}
-                    className={cn(
-                      "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors",
-                      FAMILY_STYLES[instrument.family].chip
-                    )}
-                  >
-                    <Music className="h-3.5 w-3.5" />
-                    {instrument.name}
-                  </Link>
-                ))}
+              <div className="flex min-w-0 flex-col gap-3.5">
+                {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
+
+                {/* Titre démesuré, mais en classes : `PageTitle size="display"`
+                    pose sa propre taille en style inline, qu'aucune classe ne
+                    peut alors dépasser. `size="page"` n'en pose pas, et
+                    tailwind-merge laisse gagner celles écrites ici. */}
+                <PageTitle
+                  size="page"
+                  className="text-[2.75rem] leading-[0.92] sm:text-6xl lg:text-[5rem]"
+                >
+                  {name}
+                </PageTitle>
+
+                {teacher.headline ? (
+                  <p className="max-w-2xl font-display text-xl italic leading-tight text-muted sm:text-[1.75rem]">
+                    {teacher.headline}
+                  </p>
+                ) : null}
+
+                {/* Pastilles cliquables vers la page de cours de l'instrument :
+                    du maillage interne (chaque fiche pointe vers les hubs
+                    /cours/*) autant qu'un raccourci pour l'élève. La couleur
+                    nomme la famille, et rien d'autre. */}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {teacher.instruments.map(({ instrument }) => (
+                    <Link
+                      key={instrument.slug}
+                      href={`/cours/${instrument.slug}`}
+                      className={cn(
+                        "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors",
+                        FAMILY_STYLES[instrument.family].chip
+                      )}
+                    >
+                      <Music className="h-3.5 w-3.5" />
+                      {instrument.name}
+                    </Link>
+                  ))}
+                </div>
               </div>
             </header>
 
             {/* La ligne de faits : ce que la base sait déjà et que la fiche
-                taisait, en cellules séparées par des filets. */}
+                taisait, en cellules séparées par des filets. **Le chiffre est
+                au-dessus de sa légende** — c'est lui qu'on parcourt, la légende
+                ne fait que le qualifier. */}
             {facts.length >= 2 ? (
               <dl
                 className={cn(
@@ -399,11 +408,17 @@ export default async function TeacherPublicPage({
                 )}
               >
                 {facts.map((fact) => (
-                  <div key={fact.label} className="px-0 py-4 sm:px-5 sm:first:pl-0">
-                    <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-subtle">
-                      {fact.label}
+                  // `flex-col-reverse` et non l'ordre du DOM : dans une liste
+                  // de définitions, le `<dt>` doit précéder son `<dd>`. On
+                  // garde donc l'ordre valide et on inverse à l'affichage.
+                  <div
+                    key={fact.legend}
+                    className="flex flex-col-reverse gap-0.5 px-0 py-4 sm:px-5 sm:first:pl-0"
+                  >
+                    <dt className="text-xs text-subtle first-letter:uppercase">
+                      {fact.legend}
                     </dt>
-                    <dd className="mt-1.5 font-display text-lg font-medium text-foreground">
+                    <dd className="font-display text-[1.875rem] font-semibold leading-none text-foreground">
                       {fact.value}
                     </dd>
                   </div>
@@ -421,20 +436,9 @@ export default async function TeacherPublicPage({
               laissait voir ses derniers créneaux qu'une fois arrivé au bas
               d'une fiche à la bio longue. Court, il n'affiche aucune barre. */}
           <aside className="flex flex-col gap-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
-            {rate ? (
-              <div className="border-y border-border py-4">
-                <p className="font-display text-4xl font-semibold leading-none text-primary">
-                  {`${rate} €`}
-                  <span className="font-sans text-base font-normal text-muted">
-                    {" / heure"}
-                  </span>
-                </p>
-                <p className="mt-2 text-sm text-muted">
-                  Réglé directement au prof, hors plateforme.
-                </p>
-              </div>
-            ) : null}
-
+            {/* Le tarif est **dans** la carte, en tête : c'est la première
+                chose que l'élève cherche avant de regarder un créneau, et un
+                bloc séparé au-dessus en faisait un second objet. */}
             <BookingWidget
               teacherSlug={teacher.slug}
               instruments={instruments.map((i) => ({
@@ -444,6 +448,7 @@ export default async function TeacherPublicPage({
               timezone={teacher.user.timezone}
               granularityMin={teacher.slotGranularityMin}
               trialOffered={teacher.trialLessonOffered}
+              hourlyRate={rate}
               viewer={viewer}
               initialNextSlot={initialNextSlot}
             />
@@ -465,13 +470,23 @@ export default async function TeacherPublicPage({
             {teacher.bio ? (
               <section className="flex flex-col gap-4">
                 <SectionTitle>À propos</SectionTitle>
-                <div className="flex max-w-2xl flex-col gap-4 leading-relaxed text-muted">
+                {/* Le premier paragraphe en pleine encre, les suivants en
+                    retrait de gris : on donne le premier en entier plutôt
+                    qu'un extrait tronqué, et le détail se lit ensuite pour qui
+                    veut aller plus loin. */}
+                <div className="flex max-w-2xl flex-col gap-4 text-base leading-[1.7]">
                   {teacher.bio
                     .split(/\n{2,}/)
                     .map((paragraph) => paragraph.trim())
                     .filter(Boolean)
                     .map((paragraph, index) => (
-                      <p key={index} className="whitespace-pre-line">
+                      <p
+                        key={index}
+                        className={cn(
+                          "whitespace-pre-line",
+                          index === 0 ? "text-foreground" : "text-muted"
+                        )}
+                      >
                         {paragraph}
                       </p>
                     ))}
@@ -507,10 +522,4 @@ export default async function TeacherPublicPage({
       <SiteFooter />
     </>
   );
-}
-
-/** « chez le prof, chez vous ou en visio » — la dernière modalité prend « ou ». */
-function joinWithOr(items: string[]): string {
-  if (items.length === 1) return items[0];
-  return `${items.slice(0, -1).join(", ")} ou ${items[items.length - 1]}`;
 }

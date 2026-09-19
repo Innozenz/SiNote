@@ -182,12 +182,30 @@ body {
    contraste. Pas d'interlettrage négatif — une Didone/garalde se resserre mal,
    ses pleins et déliés se toucheraient ; on l'ouvre même légèrement. Poids 600 :
    présent sans être lourd à grande taille. */
-h1,
-h2,
-h3 {
+/* `:where()` : spécificité nulle, donc n'importe quel utilitaire Tailwind
+   (`font-sans` sur un intitulé de filtre) reprend la main. Écrite en `h1, h2,
+   h3` nus, la règle battait les utilitaires et il fallait un style en ligne
+   pour s'en sortir. (`@layer base` ne suffit pas : la chaîne CSS de Next en
+   dev ressort la règle hors couche.) */
+:where(h1, h2, h3) {
   font-family: var(--font-display), var(--font-sans-custom), serif;
   letter-spacing: 0.005em;
   font-weight: 600;
+}
+
+/**
+ * Pages larges de l'espace connecté.
+ *
+ * Le layout centre tout à `max-w-5xl`, et c'est la bonne largeur pour lire un
+ * formulaire ou une liste. L'agenda, lui, est une grille de sept jours flanquée
+ * d'un volet de 320 px : à 1024 px, chaque jour n'avait plus que 90 px. Une page
+ * qui pose `page-wide` sur sa racine élargit le conteneur du layout — le layout
+ * est un Server Component sans accès à la route, et `:has()` évite d'y faire
+ * remonter un réglage par page. Sélecteur plus spécifique que l'utilitaire,
+ * donc il gagne sans `!important`.
+ */
+main > div:has(> .page-wide) {
+  max-width: 88rem;
 }
 
 /* Anneau de focus visible et cohérent : l'accessibilité ne doit pas dépendre

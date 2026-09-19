@@ -60,7 +60,7 @@ export function PageTitle({
     <h1
       className={cn(
         "text-balance font-display font-semibold leading-[0.95] tracking-[-0.02em] text-foreground",
-        size === "page" && "text-3xl sm:text-4xl",
+        size === "page" && "text-4xl sm:text-[3.25rem]",
         className
       )}
       style={

@@ -56,11 +56,13 @@ export function StudentNoteEditor({
         <Lock className="h-3 w-3" />
         Visible par vous seul — jamais par l&apos;élève.
       </p>
+      {/* Cadre pointillé : une note à soi, pas un champ de formulaire. */}
       <Textarea
-        rows={4}
+        rows={3}
         value={content}
-        placeholder="Points de suivi, préférences, progrès, ce qu'il faut garder en tête pour cet élève…"
+        placeholder="Visible par vous seul. Ex. : « Payé en espèces, préfère les cours le jeudi. »"
         onChange={(e) => setContent(e.target.value)}
+        className="border-dashed border-border-strong bg-transparent text-sm shadow-none"
       />
       <div className="flex items-center gap-3">
         <Button size="sm" disabled={!dirty || busy} onClick={save}>

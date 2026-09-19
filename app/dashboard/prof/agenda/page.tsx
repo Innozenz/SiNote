@@ -178,7 +178,7 @@ export default async function TeacherAgendaPage({
     };
 
     return (
-      <div className="flex flex-col gap-8">
+      <div className="page-wide flex flex-col gap-8">
         <AgendaHeader view="mois" nav={monthNav} />
         <TeacherMonth agenda={monthAgenda} openDays={openDays} />
       </div>
@@ -325,7 +325,7 @@ export default async function TeacherAgendaPage({
   });
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="page-wide flex flex-col gap-8">
       <AgendaHeader view={view} nav={nav} />
       <TeacherAgenda
       rows={rows}

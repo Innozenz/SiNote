@@ -3,20 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { BookingStatus, InstrumentFamily } from "@prisma/client";
-import { CalendarX, Check, FileText, Loader2, X } from "lucide-react";
+import { CalendarX, Check, FileText, Loader2, Video, X } from "lucide-react";
 
 import { InstrumentChip } from "@/components/instrument-chip";
 import {
   LESSON_MODE_LABELS,
   LessonStatusBadge,
 } from "@/components/lesson-status";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { checkTransition, type BookingAction } from "@/lib/bookings/transitions";
 import { postJson } from "@/lib/http/failure";
 import { canDocument } from "@/lib/reports/eligibility";
 import { notifyFailure, notifySuccess } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
 /**
  * Le fil des cours d'un élève, vu par son prof.
@@ -36,6 +36,10 @@ export type StudentLessonRow = {
   endsAt: string;
   mode: "ONLINE" | "TEACHER_PLACE" | "STUDENT_PLACE";
   isTrial: boolean;
+  /** Adresse de visio, quand le prof l'a renseignée. */
+  meetingUrl: string | null;
+  /** Ce que l'élève a écrit en réservant — sa demande, dans ses mots. */
+  studentMessage: string | null;
   instrumentName: string;
   instrumentFamily: InstrumentFamily;
   /** Compte rendu déjà ouvert : nombre de pièces jointes, et lu ou non. */
@@ -160,6 +164,9 @@ export function TeacherStudentLessons({
     });
 
   const spec = pending ? DESTRUCTIVE[pending.action] : undefined;
+  // Calculé une fois sur le `now` figé, pas à chaque ligne : deux appels à
+  // `new Date()` dans un rendu peuvent tomber de part et d'autre de minuit.
+  const todayLabel = day(now.toISOString());
 
   if (rows.length === 0) {
     return (
@@ -207,86 +214,127 @@ export function TeacherStudentLessons({
           );
           const documentable = canDocument(row.status, startsAt, now);
 
-          return (
-            <li key={row.id} className="flex flex-col gap-3 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="shrink-0">
-                    <p className="text-xs text-subtle first-letter:uppercase">
-                      {day(row.startsAt)}
-                    </p>
-                    <p className="font-display text-xl font-semibold leading-none tabular-nums">
-                      {time(row.startsAt)}
-                      <span className="text-subtle"> → </span>
-                      {time(row.endsAt)}
-                    </p>
-                  </div>
-                </div>
+          const written = row.report !== null;
+          // « aujourd'hui » se lit plus vite qu'une date qu'il faut rapprocher
+          // de celle du jour, et c'est la seule que l'on cherche vraiment.
+          const isToday = day(row.startsAt) === todayLabel;
+          const joinable =
+            row.status === "CONFIRMED" &&
+            row.mode === "ONLINE" &&
+            row.meetingUrl !== null &&
+            endsAt > now;
 
-                <div className="flex flex-wrap items-center gap-2">
+          return (
+            // Trois colonnes : quand, quoi, où ça en est. La date mène la ligne
+            // — c'est un fil chronologique, pas un agenda : l'heure seule ne
+            // situe rien dans une liste qui descend sur trois mois.
+            <li
+              key={row.id}
+              className="grid gap-x-5 gap-y-3 py-[18px] sm:grid-cols-[150px_minmax(0,1fr)_auto] sm:items-center"
+            >
+              <div className="min-w-0">
+                <p className="font-medium first-letter:uppercase">
+                  {day(row.startsAt)}
+                </p>
+                <p className="text-sm tabular-nums text-muted">
+                  {time(row.startsAt)} → {time(row.endsAt)}
+                  {isToday ? " · aujourd'hui" : ""}
+                </p>
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="flex flex-wrap items-center gap-2">
                   <InstrumentChip
                     name={row.instrumentName}
                     family={row.instrumentFamily}
                     detail={row.isTrial ? "essai" : null}
-                    size="xs"
                   />
-                  <span className="text-xs text-muted">
+                  <span className="text-sm text-muted">
                     {LESSON_MODE_LABELS[row.mode]}
                   </span>
-                  <LessonStatusBadge status={row.status} />
-                </div>
+                </span>
+
+                {row.studentMessage ? (
+                  <span className="line-clamp-2 text-sm italic text-muted">
+                    «&nbsp;{row.studentMessage}&nbsp;»
+                  </span>
+                ) : null}
+
+                {/* L'état du compte rendu, en clair sous le cours : à écrire (le
+                    prof le doit encore) ou envoyé, avec ce qu'il contient et
+                    s'il a été lu. C'est la seule chose que ni l'agenda ni la
+                    boîte de réception ne montrent. */}
+                {documentable ? (
+                  <Link
+                    href={`${basePath}?onglet=comptes-rendus#cr-${row.id}`}
+                    className={cn(
+                      "flex w-fit items-center gap-1.5 text-sm hover:underline",
+                      written ? "text-success" : "text-warning"
+                    )}
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    {written && row.report
+                      ? [
+                          "Compte rendu envoyé",
+                          row.report.attachments > 0
+                            ? `${row.report.attachments} pièce${row.report.attachments > 1 ? "s" : ""} jointe${row.report.attachments > 1 ? "s" : ""}`
+                            : null,
+                          row.report.seen ? "lu" : "non lu",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : "Compte rendu à écrire"}
+                  </Link>
+                ) : null}
               </div>
 
-              {/* L'état du compte rendu : à écrire (le prof le doit encore) ou
-                  envoyé, avec ce qu'il contient et s'il a été lu. */}
-              {documentable ? (
-                <Link
-                  href={`${basePath}?onglet=comptes-rendus#cr-${row.id}`}
-                  className="flex w-fit items-center gap-1.5 text-sm hover:underline"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  {row.report === null ? (
-                    <Badge variant="warning">Compte rendu à écrire</Badge>
-                  ) : (
-                    <Badge variant="success">
-                      {[
-                        "Compte rendu envoyé",
-                        row.report.attachments > 0
-                          ? `${row.report.attachments} pièce${row.report.attachments > 1 ? "s" : ""} jointe${row.report.attachments > 1 ? "s" : ""}`
-                          : null,
-                        row.report.seen ? "lu" : "non lu",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Badge>
-                  )}
-                </Link>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <LessonStatusBadge status={row.status} />
 
-              {allowed.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {allowed.map(({ action, label, icon: Icon, variant }) => (
-                    <Button
-                      key={action}
-                      size="sm"
-                      variant={variant}
-                      disabled={busyId === row.id}
-                      onClick={() =>
-                        DESTRUCTIVE[action]
-                          ? setPending({ id: row.id, action })
-                          : void act(row.id, action)
-                      }
+                {joinable && row.meetingUrl ? (
+                  <Button size="sm" asChild>
+                    <a
+                      href={row.meetingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      {busyId === row.id ? (
-                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Icon className="mr-2 h-3 w-3" />
-                      )}
-                      {label}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
+                      <Video className="mr-2 h-3 w-3" />
+                      Rejoindre
+                    </a>
+                  </Button>
+                ) : null}
+
+                {allowed.map(({ action, label, icon: Icon, variant }) => (
+                  <Button
+                    key={action}
+                    size="sm"
+                    variant={variant}
+                    disabled={busyId === row.id}
+                    onClick={() =>
+                      DESTRUCTIVE[action]
+                        ? setPending({ id: row.id, action })
+                        : void act(row.id, action)
+                    }
+                  >
+                    {busyId === row.id ? (
+                      <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Icon className="mr-2 h-3 w-3" />
+                    )}
+                    {label}
+                  </Button>
+                ))}
+
+                {written ? (
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link
+                      href={`${basePath}?onglet=comptes-rendus#cr-${row.id}`}
+                    >
+                      Relire
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
             </li>
           );
         })}

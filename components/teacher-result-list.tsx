@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Globe, MapPin, Sparkles } from "lucide-react";
+import { Star } from "lucide-react";
 
 import { RowList } from "@/components/editorial";
-import { RatingBadge } from "@/components/ui/stars";
 import { FAMILY_STYLES } from "@/lib/instruments/family";
 import type { SearchResult } from "@/lib/search/teachers";
 import { formatSlotShort } from "@/lib/teacher/next-slots";
+import { placeLine } from "@/lib/teacher/places";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,7 +16,12 @@ import { cn } from "@/lib/utils";
  * markup garantirait qu'ils finissent par diverger. Server Component — la photo
  * est un `<img>` rendu côté serveur, avec repli sur l'initiale.
  *
- * **La ligne n'est plus un seul lien.** Les prochains créneaux sont des liens à
+ * **Trois colonnes, comme la maquette** : la photo, l'identité (nom, où, note,
+ * accroche, familles enseignées), puis la colonne de décision — le tarif en
+ * haut, les prochains créneaux en bas. Le créneau est ce qui départage deux
+ * profs, il tient donc la même colonne que le prix et non une ligne à part.
+ *
+ * **La ligne n'est pas un seul lien.** Les prochains créneaux sont des liens à
  * part entière, et un `<a>` ne peut pas en contenir un autre : la ligne pose
  * donc plusieurs liens vers la même fiche (photo, nom, créneaux) plutôt qu'un
  * grand bloc cliquable. Le survol lave quand même le fond, via `group/row`,
@@ -59,20 +64,24 @@ function TeacherRow({
 }) {
   const href = `/profs/${teacher.slug}`;
   const name = teacher.name ?? "Prof de musique";
+  const where = placeLine(teacher.city, teacher);
 
   return (
     // Le retrait négatif est porté par le bloc intérieur, pas par le `<li>` :
     // sur le `<li>`, il déborderait les filets de `RowList` de part et d'autre.
     <li>
-      <div className="group/row -mx-3 rounded-lg px-3 py-6 transition-colors hover:bg-surface">
-      <div className="flex items-start justify-between gap-4 sm:gap-6">
-        <div className="flex min-w-0 items-start gap-4">
-          <Link href={href} tabIndex={-1} aria-hidden className="shrink-0">
-            <TeacherAvatar image={teacher.image} name={name} />
-          </Link>
+      <div className="group/row -mx-3 grid gap-x-6 gap-y-4 rounded-lg px-3 py-6 transition-colors hover:bg-surface sm:grid-cols-[88px_minmax(0,1fr)] lg:grid-cols-[88px_minmax(0,1fr)_220px]">
+        <Link href={href} tabIndex={-1} aria-hidden className="shrink-0">
+          <TeacherAvatar
+            image={teacher.image}
+            name={name}
+            className="h-[88px] w-[88px] text-4xl"
+          />
+        </Link>
 
-          <div className="min-w-0">
-            <h3 className="font-display text-xl font-medium leading-tight text-foreground">
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+            <h3 className="font-display text-[2rem] font-medium leading-none text-foreground">
               <Link
                 href={href}
                 className="underline-offset-4 outline-none group-hover/row:underline focus-visible:underline"
@@ -81,77 +90,102 @@ function TeacherRow({
               </Link>
             </h3>
 
-            {teacher.instruments.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {teacher.instruments.slice(0, 4).map((instrument) => (
+            {where ? (
+              <span className="text-sm text-muted first-letter:uppercase">
+                {where}
+              </span>
+            ) : null}
+
+            <Rating
+              average={teacher.rating.average}
+              count={teacher.rating.count}
+            />
+          </div>
+
+          {teacher.headline ? (
+            <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-muted">
+              {teacher.headline}
+            </p>
+          ) : null}
+
+          {teacher.instruments.length > 0 || teacher.trialLessonOffered ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {teacher.instruments.slice(0, 4).map((instrument) => (
+                <span
+                  key={instrument.slug}
+                  className={cn(
+                    "inline-flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
+                    FAMILY_STYLES[instrument.family].chipStatic
+                  )}
+                >
                   <span
-                    key={instrument.slug}
+                    aria-hidden
                     className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                      FAMILY_STYLES[instrument.family].chipStatic
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      FAMILY_STYLES[instrument.family].dot
                     )}
-                  >
-                    {instrument.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {teacher.headline ? (
-              <p className="mt-2 line-clamp-2 text-sm text-muted">
-                {teacher.headline}
-              </p>
-            ) : null}
-
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
-              <RatingBadge
-                average={teacher.rating.average}
-                count={teacher.rating.count}
-              />
-              {teacher.rating.count === 0 ? (
-                <span className="text-subtle">Nouveau</span>
-              ) : null}
-
-              {teacher.city ? (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {teacher.city}
+                  />
+                  {instrument.name}
                 </span>
-              ) : null}
-              {teacher.teachesOnline ? (
-                <span className="flex items-center gap-1">
-                  <Globe className="h-3 w-3" />
-                  Visio
-                </span>
-              ) : null}
+              ))}
 
               {teacher.trialLessonOffered ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 font-medium text-success">
-                  <Sparkles className="h-3 w-3" />
+                <span className="inline-flex h-[26px] items-center rounded-full bg-accent-soft px-2.5 text-xs font-medium text-accent">
                   Cours d&apos;essai
                 </span>
               ) : null}
             </div>
-          </div>
+          ) : null}
         </div>
 
-        {teacher.hourlyRateCents !== null ? (
-          <p className="shrink-0 text-right font-display text-2xl font-semibold leading-none text-primary">
-            {`${Math.round(teacher.hourlyRateCents / 100)} €`}
-            <span className="block pt-1 font-sans text-xs font-normal text-muted">
-              par heure
-            </span>
-          </p>
-        ) : null}
-      </div>
+        {/* Colonne de décision : le tarif en haut, la disponibilité en bas.
+            Sous `lg` elle repasse sous l'identité, alignée à gauche — une
+            colonne de 220 px ne tient pas sur un téléphone. */}
+        <div className="flex flex-col justify-between gap-3 sm:col-start-2 lg:col-start-3 lg:items-end lg:text-right">
+          {teacher.hourlyRateCents !== null ? (
+            <p className="font-display text-[1.875rem] font-semibold leading-none text-foreground">
+              {`${Math.round(teacher.hourlyRateCents / 100)} €`}
+              <span className="font-sans text-sm font-medium text-muted">
+                {" / heure"}
+              </span>
+            </p>
+          ) : (
+            <span />
+          )}
 
-      <NextSlotsRow
-        teacher={teacher}
-        href={href}
-        slotWindowDays={slotWindowDays}
-      />
+          <NextSlots
+            teacher={teacher}
+            href={href}
+            slotWindowDays={slotWindowDays}
+          />
+        </div>
       </div>
     </li>
+  );
+}
+
+/**
+ * Note du prof, forme compacte de la maquette : une étoile dorée, la moyenne et
+ * le volume. Un prof sans avis n'affiche pas « 0 » — une absence d'avis n'est
+ * pas une mauvaise note — mais « Nouveau », qui dit la même chose sans la
+ * teinter en négatif.
+ */
+function Rating({
+  average,
+  count,
+}: {
+  average: number | null;
+  count: number;
+}) {
+  const isNew = average === null || count === 0;
+
+  return (
+    <span className="inline-flex items-center gap-1 text-sm text-foreground">
+      <Star aria-hidden className="h-3.5 w-3.5 fill-accent text-accent" />
+      {isNew
+        ? "Nouveau"
+        : `${average.toFixed(1).replace(".", ",")} · ${count} avis`}
+    </span>
   );
 }
 
@@ -160,13 +194,15 @@ function TeacherRow({
  *
  * C'est le cœur de la refonte de cette liste : un élève choisit un prof
  * *disponible*, et le lui faire découvrir en ouvrant chaque fiche est
- * exactement ce que ce bandeau supprime.
+ * exactement ce que ce bandeau supprime. Le premier créneau porte la teinte
+ * primaire — c'est le plus tôt, donc celui que l'œil doit trouver en premier ;
+ * les suivants restent neutres.
  *
  * `nextSlots === null` veut dire « pas calculé » (les pages qui ne les
  * demandent pas) et ne rend rien ; un tableau vide, lui, dit franchement qu'il
  * n'y a rien dans la fenêtre — un silence laisserait croire à un oubli.
  */
-function NextSlotsRow({
+function NextSlots({
   teacher,
   href,
   slotWindowDays,
@@ -180,23 +216,26 @@ function NextSlotsRow({
 
   if (next.slots.length === 0) {
     return (
-      <p className="mt-4 text-xs text-subtle">
+      <p className="text-xs text-subtle">
         {`Aucun créneau sous ${slotWindowDays} jours`}
       </p>
     );
   }
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-subtle">
-        Prochains créneaux
-      </span>
-      <div className="flex flex-wrap gap-2">
-        {next.slots.map((slot) => (
+    <div className="flex flex-col gap-1.5 lg:items-end">
+      <span className="text-xs text-subtle">Prochains créneaux</span>
+      <div className="flex flex-wrap gap-1.5 lg:justify-end">
+        {next.slots.map((slot, index) => (
           <Link
             key={slot.startsAt.toISOString()}
             href={href}
-            className="inline-flex min-h-9 items-center rounded-full border border-success/40 bg-success-soft px-3 text-xs font-medium text-success transition-colors hover:border-success"
+            className={cn(
+              "inline-flex h-7 items-center rounded-full border px-2.5 text-xs transition-colors",
+              index === 0
+                ? "border-primary text-primary"
+                : "border-border text-muted hover:border-primary hover:text-primary"
+            )}
           >
             {formatSlotShort(slot.startsAt, next.timezone)}
           </Link>
@@ -219,7 +258,10 @@ export function TeacherAvatar({
   return (
     <span
       className={cn(
-        "relative flex h-16 w-16 shrink-0 overflow-hidden rounded-full border border-border bg-surface-strong",
+        // La taille de l'initiale est posée ici, sur le conteneur : l'appelant
+        // qui agrandit la pastille (88 px en recherche, 64 px ailleurs) doit
+        // pouvoir agrandir la lettre du même geste.
+        "relative flex h-16 w-16 shrink-0 overflow-hidden rounded-full border border-border bg-surface-strong text-xl",
         className
       )}
     >
@@ -227,7 +269,7 @@ export function TeacherAvatar({
         // eslint-disable-next-line @next/next/no-img-element
         <img src={image} alt="" className="h-full w-full object-cover" />
       ) : (
-        <span className="flex h-full w-full items-center justify-center font-display text-xl text-muted">
+        <span className="flex h-full w-full items-center justify-center font-display text-muted">
           {name.charAt(0).toUpperCase()}
         </span>
       )}

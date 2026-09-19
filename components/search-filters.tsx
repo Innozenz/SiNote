@@ -20,10 +20,17 @@ const RATE_MIN = 10;
 const RATE_MAX = 120;
 const RATE_STEP = 5;
 
+/**
+ * Les trois modalités, en un mot chacune.
+ *
+ * Le segment vit dans une colonne de 264 px : « En présentiel » y passait à la
+ * ligne **à l'intérieur de son bouton**, ce qui cassait la rangée. Sous
+ * l'intitulé « Où », le mot seul répond déjà à la question.
+ */
 const MODES = [
   { value: null, label: "Tous" },
-  { value: "online", label: "En visio" },
-  { value: "in_person", label: "En présentiel" },
+  { value: "online", label: "Visio" },
+  { value: "in_person", label: "Présentiel" },
 ] as const;
 
 /**
@@ -204,7 +211,7 @@ export function SearchFilters({
                   aria-pressed={active}
                   onClick={() => navigate({ mode: mode.value })}
                   className={cn(
-                    "min-h-11 flex-1 px-2 text-xs font-medium transition-colors",
+                    "min-h-11 flex-1 whitespace-nowrap px-2 text-xs font-medium transition-colors",
                     active
                       ? "bg-primary text-primary-foreground"
                       : "bg-elevated text-muted hover:text-foreground"
@@ -280,6 +287,14 @@ function commitRate(
   navigate({ prix: rate >= RATE_MAX ? null : String(rate) });
 }
 
+/**
+ * Un groupe de filtres.
+ *
+ * L'intitulé est l'œil-de-bœuf doré du reste du site — c'est le même objet
+ * éditorial qu'un `Eyebrow` de page : une étiquette, pas un titre. Aucun filet
+ * ici : la colonne de filtres est calme, et un trait au-dessus de chaque groupe
+ * la redécouperait en quatre boîtes.
+ */
 function FilterGroup({
   title,
   children,
@@ -288,8 +303,11 @@ function FilterGroup({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3 border-t border-border pt-4">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-subtle">
+    <section className="flex flex-col gap-3">
+      {/* Un œil-de-bœuf est une étiquette, pas un titre d'affichage : `font-sans`
+          reprend la main sur la règle Cormorant des titres (posée dans
+          `@layer base`, donc battue par les utilitaires). */}
+      <h2 className="font-sans text-xs font-medium uppercase tracking-[0.2em] text-accent">
         {title}
       </h2>
       {children}
@@ -314,7 +332,7 @@ function FilterRow({
       className={cn(
         "flex min-h-11 w-full items-center gap-2.5 rounded-[var(--radius-sm)] px-2 text-left text-sm transition-colors",
         active
-          ? "bg-surface font-medium text-foreground"
+          ? "bg-surface-strong font-medium text-foreground"
           : "text-muted hover:text-foreground"
       )}
     >

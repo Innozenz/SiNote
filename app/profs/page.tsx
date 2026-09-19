@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { PageHeader } from "@/components/editorial";
 import { SearchFilters } from "@/components/search-filters";
@@ -23,6 +23,7 @@ import {
   resolveInstrument,
   searchTeachers,
 } from "@/lib/search/teachers";
+import { instrumentInProse } from "@/lib/instruments/prose";
 import {
   citySlug,
   instrumentCityPath,
@@ -50,9 +51,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const filters = parseFilters(await searchParams);
 
-  const subject = filters.instrument ? `de ${filters.instrument}` : "de musique";
   const place = filters.city ? ` à ${filters.city}` : "";
-  const title = `Cours ${subject}${place} — trouvez votre prof`;
 
   // Consolidation SEO : une recherche par instrument (« cours de guitare »)
   // vise exactement ce que couvrent les pages `/cours/*`, plus riches. Pour ne
@@ -63,6 +62,15 @@ export async function generateMetadata({
   const matched = filters.instrument
     ? await resolveInstrument(filters.instrument)
     : null;
+
+  // Le nom du catalogue plutôt que le mot tapé (« technique vocale » → chant),
+  // et en minuscule : « Cours de Chant » n'est pas du français.
+  const subject = matched
+    ? `de ${instrumentInProse(matched.name)}`
+    : filters.instrument
+      ? `de ${filters.instrument}`
+      : "de musique";
+  const title = `Cours ${subject}${place} — trouvez votre prof`;
 
   let canonical = `/profs${buildQueryString(filters)}`;
   if (matched && isIndexableSearch(filters)) {
@@ -86,27 +94,74 @@ export async function generateMetadata({
   };
 }
 
-function PageLink({
-  href,
-  enabled,
-  children,
+/**
+ * Fenêtre de numéros autour de la page courante.
+ *
+ * Bornée à cinq : au-delà, la rangée de chiffres devient plus large que la
+ * ligne « Élargir » qu'elle accompagne, et personne ne clique sur la page 14.
+ */
+function pageWindow(current: number, last: number): number[] {
+  const span = Math.min(5, last);
+  let first = Math.max(1, current - Math.floor(span / 2));
+  if (first + span - 1 > last) first = last - span + 1;
+  return Array.from({ length: span }, (_, index) => first + index);
+}
+
+/**
+ * Pagination discrète : des numéros, et des chevrons aux extrémités.
+ *
+ * Les numéros sont de vrais liens — chaque page de résultats est une adresse,
+ * comme chaque filtre. Les chevrons ne sont **rendus que lorsqu'ils mènent
+ * quelque part** : `disabled` sur un lien produit un `<a>` toujours cliquable.
+ */
+function Pagination({
+  filters,
+  lastPage,
 }: {
-  href: string;
-  enabled: boolean;
-  children: React.ReactNode;
+  filters: Filters;
+  lastPage: number;
 }) {
-  if (!enabled) {
-    return (
-      <span className="cursor-not-allowed rounded-md border border-border px-3 py-1.5 text-sm text-subtle">
-        {children}
-      </span>
-    );
-  }
+  const url = (page: number) =>
+    `/profs${buildQueryString({ ...filters, page })}`;
 
   return (
-    <Button variant="outline" size="sm" asChild>
-      <Link href={href}>{children}</Link>
-    </Button>
+    <nav aria-label="Pages de résultats" className="flex items-center gap-4">
+      {filters.page > 1 ? (
+        <Link
+          href={url(filters.page - 1)}
+          aria-label="Page précédente"
+          className="text-subtle transition-colors hover:text-foreground"
+        >
+          <ChevronLeft aria-hidden className="h-4 w-4" />
+        </Link>
+      ) : null}
+
+      {pageWindow(filters.page, lastPage).map((page) =>
+        page === filters.page ? (
+          <span key={page} aria-current="page" className="font-medium text-foreground">
+            {page}
+          </span>
+        ) : (
+          <Link
+            key={page}
+            href={url(page)}
+            className="text-muted transition-colors hover:text-foreground"
+          >
+            {page}
+          </Link>
+        )
+      )}
+
+      {filters.page < lastPage ? (
+        <Link
+          href={url(filters.page + 1)}
+          aria-label="Page suivante"
+          className="text-subtle transition-colors hover:text-foreground"
+        >
+          <ChevronRight aria-hidden className="h-4 w-4" />
+        </Link>
+      ) : null}
+    </nav>
   );
 }
 
@@ -216,22 +271,34 @@ export default async function SearchPage({
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-5xl px-4 py-12 sm:py-16">
+      <main className="mx-auto max-w-[82rem] px-4 sm:px-8 py-12 sm:py-16">
         <PageHeader
           eyebrow="Recherche"
           title={`${
             matchedInstrument
-              ? `Cours de ${matchedInstrument.name}`
+              ? `Cours de ${instrumentInProse(matchedInstrument.name)}`
               : "Trouvez votre prof"
           }${filters.city ? ` à ${filters.city}` : ""}`}
           meta={
-            <p className="text-sm text-muted">
-              {total > 0
-                ? `${total} prof${total > 1 ? "s" : ""} disponible${total > 1 ? "s" : ""}`
-                : filtered
-                  ? "Aucun résultat"
-                  : "Personne pour l’instant"}
-            </p>
+            /* Le compte et le tri, ensemble et à droite du titre. Le tri est
+               annoncé même s'il n'y en a qu'un : sans cette ligne, l'ordre
+               d'une liste de vingt profs passe pour arbitraire. Il n'est pas
+               réglable — la pertinence est une moyenne bayésienne, pas une
+               préférence — donc pas de chevron, qui promettrait un menu. */
+            <div className="flex flex-col gap-2 text-sm sm:items-end">
+              <span className="text-muted">
+                {total > 0
+                  ? `${total} professeur${total > 1 ? "s" : ""}`
+                  : filtered
+                    ? "Aucun résultat"
+                    : "Personne pour l’instant"}
+              </span>
+              {total > 0 ? (
+                <span className="text-foreground">
+                  Trier : <span className="font-medium">pertinence</span>
+                </span>
+              ) : null}
+            </div>
           }
         />
 
@@ -249,7 +316,7 @@ export default async function SearchPage({
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[264px_1fr] lg:items-start">
+        <div className="mt-8 grid gap-8 lg:grid-cols-[264px_1fr] lg:items-start lg:gap-x-16">
           <aside className="lg:sticky lg:top-6">
             <Suspense fallback={null}>
               <SearchFilters instruments={instruments} />
@@ -295,61 +362,45 @@ export default async function SearchPage({
                 )}
               </div>
             ) : (
-              <>
-                {/* Le tri est annoncé même s'il n'y en a qu'un : sans cette
-                    ligne, l'ordre d'une liste de vingt profs passe pour
-                    arbitraire. Il n'est pas réglable — la pertinence est une
-                    moyenne bayésienne, pas une préférence. */}
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-3">
-                  <p className="text-sm text-muted">
-                    {`${total} prof${total > 1 ? "s" : ""}`}
-                  </p>
-                  <p className="text-sm text-subtle">Triés par pertinence</p>
-                </div>
-
-                <TeacherResultList
-                  results={results}
-                  slotWindowDays={SLOT_WINDOW_DAYS}
-                  className="border-t-0"
-                />
-              </>
+              <TeacherResultList
+                results={results}
+                slotWindowDays={SLOT_WINDOW_DAYS}
+              />
             )}
 
-            {neighbours.length > 0 ? (
-              <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="text-sm text-subtle">Élargir :</span>
-                {neighbours.map((instrument) => (
-                  <Link
-                    key={instrument.slug}
-                    href={`/profs?instrument=${instrument.slug}`}
-                    className="inline-flex min-h-9 items-center rounded-full border border-border px-3 text-sm text-muted transition-colors hover:border-primary hover:text-primary"
-                  >
-                    {instrument.name}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
+            {/* Élargir à gauche, pagination discrète à droite : deux façons de
+                continuer la recherche, sur une seule ligne sous les résultats.
+                « toute la région » de la maquette n'est pas rendu — le modèle
+                ne connaît qu'une ville en texte libre, aucune région. */}
+            {neighbours.length > 0 || lastPage > 1 ? (
+              <div className="mt-8 flex flex-wrap items-center justify-between gap-x-6 gap-y-4 text-sm text-muted">
+                {neighbours.length > 0 ? (
+                  <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span className="text-subtle">Élargir :</span>
+                    {neighbours.map((instrument, index) => (
+                      <span key={instrument.slug}>
+                        {index > 0 ? (
+                          <span aria-hidden className="pr-1.5 text-subtle">
+                            {" ·"}
+                          </span>
+                        ) : null}
+                        <Link
+                          href={`/profs?instrument=${instrument.slug}`}
+                          className="text-primary underline-offset-4 hover:underline"
+                        >
+                          {instrument.name}
+                        </Link>
+                      </span>
+                    ))}
+                  </p>
+                ) : (
+                  <span />
+                )}
 
-            {lastPage > 1 ? (
-              <nav className="mt-10 flex items-center justify-between border-t border-border pt-6">
-                {/* Rendu conditionnel plutôt qu'un bouton désactivé :
-                    `disabled` sur un lien produit un <a> toujours cliquable. */}
-                <PageLink
-                  href={`/profs${buildQueryString({ ...filters, page: filters.page - 1 })}`}
-                  enabled={filters.page > 1}
-                >
-                  Précédent
-                </PageLink>
-                <span className="text-sm text-muted">
-                  Page {filters.page} sur {lastPage}
-                </span>
-                <PageLink
-                  href={`/profs${buildQueryString({ ...filters, page: filters.page + 1 })}`}
-                  enabled={filters.page < lastPage}
-                >
-                  Suivant
-                </PageLink>
-              </nav>
+                {lastPage > 1 ? (
+                  <Pagination filters={filters} lastPage={lastPage} />
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>

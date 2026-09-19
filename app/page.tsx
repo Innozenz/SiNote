@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import type { InstrumentFamily } from "@prisma/client";
-import { ArrowUpRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import { Row, RowList, SectionTitle } from "@/components/editorial";
 import { HeroSearch } from "@/components/hero-search";
@@ -24,6 +24,7 @@ import {
   websiteSchema,
 } from "@/lib/seo/structured-data";
 import { formatSlotShort } from "@/lib/teacher/next-slots";
+import { placeLine } from "@/lib/teacher/places";
 import { visibleTeacherWhere } from "@/lib/teacher/visibility";
 import { cn } from "@/lib/utils";
 
@@ -101,16 +102,16 @@ const staffLines = (color: string) =>
  */
 const STEPS = [
   {
-    title: "Trouvez votre professeur",
-    text: "Filtrez par instrument, par ville, ou cherchez un cours en visio. Chaque fiche montre les disponibilités réelles du prof.",
+    title: "Choisissez un professeur",
+    text: "Sa fiche, ses instruments, ses niveaux, ses avis. Rien n’est écrit par nous : les avis viennent d’élèves qui ont réellement suivi un cours.",
   },
   {
-    title: "Choisissez un créneau",
-    text: "Vous voyez son agenda et vous envoyez votre demande. Il la confirme, et vous êtes prévenu par e-mail.",
+    title: "Réservez un créneau",
+    text: "Ses disponibilités réelles, à la minute. Le professeur confirme, et vous recevez le lieu ou le lien visio.",
   },
   {
-    title: "Prenez votre cours",
-    text: "Vous réglez le professeur directement : aucun paiement en ligne, et aucune commission prélevée sur le cours.",
+    title: "Réglez le prof, directement",
+    text: "SiNote ne prend aucune commission sur vos cours. Le prix affiché est celui que vous payez à votre professeur, comme vous le souhaitez.",
   },
 ];
 
@@ -232,6 +233,16 @@ export default async function HomePage() {
     items: catalogue.filter((item) => item.family === family),
   })).filter((group) => group.items.length > 0);
 
+  /**
+   * La note du répertoire est sa légende : elle dit combien de disciplines la
+   * liste couvre, et ce que le gras y signifie. Sans prof visible, le gras
+   * n'apparaît nulle part — la seconde moitié de la phrase serait alors une
+   * consigne de lecture pour quelque chose d'absent.
+   */
+  const repertoireNote = `${catalogue.length} disciplines${
+    taught.size > 0 ? " · en gras, celles enseignées aujourd’hui" : ""
+  }`;
+
   // Le sélecteur de l'accroche propose les disciplines enseignées ; à défaut,
   // le catalogue entier — un sélecteur vide n'est pas une page d'accueil.
   const searchable = instruments.length > 0 ? instruments : catalogue;
@@ -280,7 +291,7 @@ export default async function HomePage() {
           {/* Accroche en deux colonnes : le texte à gauche, le médaillon gravé
               à droite. Registre « conservatoire » — eyebrow doré, titre en
               Cormorant avec un mot en italique doré, filet or. */}
-          <div className="relative mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:py-24 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="relative mx-auto grid max-w-[82rem] items-center gap-10 px-4 sm:px-8 py-16 sm:py-24 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="m-rise" style={rise(0.05)}>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
                 Cours de musique &amp; de chant
@@ -429,7 +440,7 @@ export default async function HomePage() {
             elle est dans la ligne et non derrière un clic. */}
         {showcase.length > 0 ? (
           <section className="border-t border-border">
-            <div className="mx-auto max-w-5xl px-4 py-16">
+            <div className="mx-auto max-w-[82rem] px-4 sm:px-8 py-16">
               <div className="m-reveal">
                 <SectionTitle
                   trailing={
@@ -461,33 +472,41 @@ export default async function HomePage() {
             qui fait circuler le référencement vers /cours/*, et le lecteur y
             apprend au passage la correspondance couleur → famille. */}
         {repertoire.length > 0 ? (
-          <section className="border-t border-border bg-surface">
-            <div className="mx-auto max-w-5xl px-4 py-16">
+          <section className="border-t border-border">
+            <div className="mx-auto max-w-[82rem] px-4 sm:px-8 py-16">
               <div className="m-reveal">
-                <SectionTitle>Le répertoire</SectionTitle>
+                <SectionTitle
+                  trailing={
+                    <span className="shrink-0 text-sm font-normal normal-case tracking-normal text-muted">
+                      {repertoireNote}
+                    </span>
+                  }
+                >
+                  Le répertoire
+                </SectionTitle>
               </div>
 
-              <div className="mt-8 grid gap-x-8 gap-y-9 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="mt-8 grid gap-x-10 gap-y-9 sm:grid-cols-2 lg:grid-cols-4">
                 {repertoire.map((group, index) => (
                   <div
                     key={group.family}
                     className="m-reveal border-t border-border pt-4"
                     style={reveal(index)}
                   >
-                    <p className="flex items-center gap-2">
+                    <p className="flex items-center gap-2.5">
                       <span
                         aria-hidden
                         className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
+                          "h-2.5 w-2.5 shrink-0 rounded-full",
                           FAMILY_STYLES[group.family].dot
                         )}
                       />
-                      <span className="font-display text-lg font-medium text-foreground">
+                      <span className="font-display text-2xl font-medium text-foreground">
                         {FAMILY_LABELS[group.family]}
                       </span>
                     </p>
 
-                    <p className="mt-2.5 text-sm leading-relaxed">
+                    <p className="mt-2.5 text-sm leading-[1.9]">
                       {group.items.map((item, position) => (
                         <span key={item.slug}>
                           {position > 0 ? (
@@ -519,7 +538,7 @@ export default async function HomePage() {
         {/* Fonctionnement. Trois temps chiffrés en Cormorant italique doré :
             le filet au-dessus fait le travail d'une carte, sans la boîte. */}
         <section className="border-t border-border">
-          <div className="mx-auto max-w-5xl px-4 py-16">
+          <div className="mx-auto max-w-[82rem] px-4 sm:px-8 py-16">
             <div className="m-reveal">
               <SectionTitle>Comment ça marche</SectionTitle>
             </div>
@@ -533,14 +552,14 @@ export default async function HomePage() {
                 >
                   <span
                     aria-hidden
-                    className="block font-display text-3xl font-semibold italic leading-none text-accent"
+                    className="block font-display text-[3.5rem] font-medium italic leading-none text-accent"
                   >
                     {index + 1}.
                   </span>
-                  <h3 className="mt-3 font-display text-xl font-medium text-foreground">
+                  <h3 className="mt-2.5 font-display text-[1.625rem] font-medium leading-tight text-foreground">
                     {step.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted">
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted">
                     {step.text}
                   </p>
                 </li>
@@ -549,10 +568,11 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* Côté prof. Bleu plein : la page se referme sur un contraste franc
-            plutôt que sur une énième carte claire. */}
-        <section>
-          <Spotlight className="relative overflow-hidden bg-sidebar text-sidebar-foreground">
+        {/* Côté prof. Bandeau bleu posé sur le papier — un bloc arrondi dans la
+            colonne, et non une bande pleine largeur : la page se referme sur un
+            contraste franc sans changer de format. */}
+        <section className="mx-auto max-w-[82rem] px-4 sm:px-8 pb-4 pt-20">
+          <Spotlight className="relative overflow-hidden rounded-[20px] bg-sidebar text-sidebar-foreground">
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0 transition-opacity duration-500"
@@ -570,39 +590,41 @@ export default async function HomePage() {
               />
             </div>
 
-            <div className="relative mx-auto max-w-5xl px-4 py-20">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent-soft">
-                Vous enseignez ?
-              </p>
+            <div className="relative flex flex-col gap-8 px-7 py-11 sm:px-12 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
+              <div className="flex max-w-2xl flex-col gap-2.5">
+                <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent-soft">
+                  Vous enseignez ?
+                </p>
 
-              <h2
-                className="mt-5 max-w-2xl font-display font-semibold leading-[1.05]"
-                style={{ fontSize: "clamp(1.875rem, 4.4vw, 3rem)" }}
-              >
-                Une fiche, un agenda, des élèves qui vous trouvent.
-              </h2>
+                <h2
+                  className="font-display font-semibold leading-[1.05]"
+                  style={{ fontSize: "clamp(1.875rem, 4.4vw, 2.75rem)" }}
+                >
+                  Une fiche, un agenda, des élèves qui vous trouvent.
+                </h2>
 
-              <p className="mt-6 max-w-xl leading-relaxed text-sidebar-muted">
-                Publiez votre fiche, définissez vos disponibilités récurrentes
-                et recevez des demandes de cours. Un abonnement mensuel, et
-                aucune commission sur ce que vous facturez.
-              </p>
+                <p className="text-[0.9375rem] leading-relaxed text-sidebar-muted">
+                  Abonnement mensuel unique, sans commission. Vos élèves vous
+                  règlent directement.
+                </p>
+              </div>
 
               {/* Bouton en négatif écrit à la main : les variantes de `Button`
                   sont réglées pour un fond clair, aucune ne tient sur le bleu. */}
-              <div className="mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
-                <Link
-                  href="/enseigner"
-                  className="inline-flex min-h-12 items-center gap-2 rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
-                >
-                  Découvrir l’espace prof
-                  <ArrowUpRight className="h-4 w-4" />
-                </Link>
+              <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3">
                 <Link
                   href="/connexion"
+                  className="inline-flex min-h-12 items-center rounded-[var(--radius-sm)] bg-background px-6 text-base font-medium text-foreground transition-all hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0"
+                >
+                  Créer ma fiche
+                </Link>
+                {/* `/enseigner` est la vitrine indexable de l'offre prof : elle
+                    reste liée depuis l'accueil, en second rang. */}
+                <Link
+                  href="/enseigner"
                   className="inline-flex min-h-12 items-center text-sm font-medium text-sidebar-foreground/80 underline-offset-4 hover:text-sidebar-foreground hover:underline"
                 >
-                  Créer ma fiche →
+                  Découvrir l’espace prof →
                 </Link>
               </div>
             </div>
@@ -619,62 +641,89 @@ export default async function HomePage() {
  *
  * Toute la ligne est un seul lien : rien ici n'est cliquable séparément — le
  * badge de créneau annonce la disponibilité, il ne la réserve pas.
+ *
+ * La répartition suit la maquette : à gauche l'identité (photo, nom, où le
+ * cours a lieu, les familles enseignées), à droite ce qui décide — le tarif et
+ * le prochain créneau — puis le chevron qui dit que la ligne s'ouvre.
  */
 function ShowcaseRow({ teacher }: { teacher: SearchResult }) {
   const name = teacher.name ?? "Prof de musique";
   const next = teacher.nextSlots?.slots[0] ?? null;
+  const where = placeLine(teacher.city, teacher);
 
   return (
     <Row
       href={`/profs/${teacher.slug}`}
       main={
         <div className="flex items-start gap-4">
-          <TeacherAvatar image={teacher.image} name={name} />
+          <TeacherAvatar
+            image={teacher.image}
+            name={name}
+            className="text-2xl"
+          />
 
           <div className="min-w-0">
-            <p className="font-display text-xl font-medium leading-tight text-foreground">
-              {name}
-            </p>
+            <div className="flex flex-wrap items-baseline gap-x-3.5 gap-y-1">
+              <p className="font-display text-[1.75rem] font-medium leading-tight text-foreground">
+                {name}
+              </p>
+              {where ? (
+                <span className="text-sm text-muted first-letter:uppercase">
+                  {where}
+                </span>
+              ) : null}
+            </div>
 
             {teacher.instruments.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {teacher.instruments.slice(0, 3).map((instrument) => (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {teacher.instruments.slice(0, 4).map((instrument) => (
                   <span
                     key={instrument.slug}
                     className={cn(
-                      "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                      "inline-flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
                       FAMILY_STYLES[instrument.family].chipStatic
                     )}
                   >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                        FAMILY_STYLES[instrument.family].dot
+                      )}
+                    />
                     {instrument.name}
                   </span>
                 ))}
               </div>
             ) : null}
+          </div>
+        </div>
+      }
+      meta={
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end gap-1.5">
+            {teacher.hourlyRateCents !== null ? (
+              <p className="font-display text-[1.625rem] font-semibold leading-none text-foreground">
+                {`${Math.round(teacher.hourlyRateCents / 100)} €`}
+                <span className="font-sans text-[0.9375rem] font-medium text-muted">
+                  {" / heure"}
+                </span>
+              </p>
+            ) : null}
 
             {next && teacher.nextSlots ? (
-              <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
                 <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success" />
                 {`Prochain créneau ${formatSlotShort(
                   next.startsAt,
                   teacher.nextSlots.timezone
                 )}`}
               </p>
-            ) : teacher.city ? (
-              <p className="mt-2.5 text-sm text-muted">{teacher.city}</p>
             ) : null}
           </div>
+
+          <ChevronRight aria-hidden className="h-5 w-5 shrink-0 text-subtle" />
         </div>
-      }
-      meta={
-        teacher.hourlyRateCents !== null ? (
-          <p className="font-display text-2xl font-semibold leading-none text-primary">
-            {`${Math.round(teacher.hourlyRateCents / 100)} €`}
-            <span className="block pt-1 font-sans text-xs font-normal text-muted">
-              par heure
-            </span>
-          </p>
-        ) : null
       }
     />
   );

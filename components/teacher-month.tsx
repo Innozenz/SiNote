@@ -106,12 +106,12 @@ export function TeacherMonth({
                       href={`/dashboard/prof/agenda?vue=jour&date=${cell.date}`}
                       className={cn(
                         "flex min-h-[5.5rem] flex-col gap-1 p-1.5 transition-colors hover:bg-surface",
-                        // Même code que la semaine : papier = ouvert, gris
+                        // Même code que la semaine : crème clair = ouvert, gris
                         // soutenu = aucune ouverture ce jour-là.
                         !cell.inMonth
                           ? "bg-surface/50"
                           : open.has(cell.date)
-                            ? "bg-background"
+                            ? "bg-elevated"
                             : "bg-surface-strong"
                       )}
                       title={

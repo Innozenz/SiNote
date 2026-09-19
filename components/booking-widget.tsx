@@ -82,6 +82,7 @@ export function BookingWidget({
   timezone,
   granularityMin,
   trialOffered,
+  hourlyRate = null,
   viewer,
   initialNextSlot = null,
 }: {
@@ -91,6 +92,12 @@ export function BookingWidget({
   /** Pas de la grille du prof — décide s'il existe des départs intermédiaires. */
   granularityMin: number;
   trialOffered: boolean;
+  /**
+   * Tarif horaire en euros, déjà arrondi côté serveur. En tête de la carte :
+   * c'est ce que l'élève regarde avant le premier créneau, et l'afficher dans
+   * un bloc séparé au-dessus en faisait un second objet à lire.
+   */
+  hourlyRate?: string | null;
   /**
    * État du visiteur, décidé côté serveur : `guest` (pas connecté),
    * `incomplete` (connecté mais sans profil élève — la réservation répondrait
@@ -401,29 +408,48 @@ export function BookingWidget({
 
   return (
     <Card>
-      <CardHeader className="gap-3">
-        <div>
-          <CardTitle>Réserver un cours</CardTitle>
+      <CardHeader className="gap-4">
+        {/* Le titre reste, mais pour les lecteurs d'écran seulement : à l'œil,
+            c'est le tarif qui ouvre la carte, et un intitulé « Réserver un
+            cours » au-dessus du prix ne dirait rien que la carte ne montre. */}
+        <CardTitle className="sr-only">Réserver un cours</CardTitle>
+
+        {hourlyRate ? (
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="font-display text-[2.5rem] font-semibold leading-none text-foreground">
+              {`${hourlyRate} €`}
+              <span className="font-sans text-base font-medium text-muted">
+                {" / heure"}
+              </span>
+            </p>
+            <span className="shrink-0 text-right text-xs text-muted">
+              réglé au prof, hors plateforme
+            </span>
+          </div>
+        ) : null}
+
+        {foreignZone ? (
           <CardDescription>
-            {foreignZone
-              ? `Horaires affichés dans le fuseau du prof (${timezone}), pas dans le vôtre.`
-              : "Choisissez un créneau, puis envoyez votre demande."}
+            {`Horaires affichés dans le fuseau du prof (${timezone}), pas dans le vôtre.`}
           </CardDescription>
-        </div>
+        ) : null}
 
         {/* Le prochain créneau, réservable sans parcourir la grille. Rendu dès
-            le serveur, donc présent dans le HTML. */}
+            le serveur, donc présent dans le HTML. La date et le bouton sur une
+            même ligne : c'est une proposition, pas une section. */}
         {nextSlot ? (
-          <div className="rounded-[var(--radius-sm)] bg-primary-soft p-4">
-            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-primary">
-              Prochain créneau
-            </p>
-            <p className="mt-1.5 font-display text-xl font-semibold leading-tight text-primary first-letter:uppercase">
-              {nextSlot.label}
-            </p>
+          <div className="flex items-center justify-between gap-3 rounded-[12px] bg-primary-soft p-4">
+            <div className="min-w-0">
+              <p className="text-[0.65rem] font-medium uppercase tracking-[0.08em] text-primary">
+                Prochain créneau
+              </p>
+              <p className="mt-0.5 font-display text-xl font-semibold leading-tight text-primary first-letter:uppercase">
+                {nextSlot.label}
+              </p>
+            </div>
             <Button
               size="sm"
-              className="mt-3 w-full"
+              className="shrink-0"
               onClick={() => {
                 const target = new Date(nextSlot.startsAt);
                 const week = startOfWeek(target);
@@ -516,24 +542,38 @@ export function BookingWidget({
                   setShowQuarters(false);
                 }}
                 className={cn(
-                  "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-[var(--radius-sm)] px-0.5 py-1.5 transition-colors",
+                  // Chaque jour est une pastille cernée : un jour ouvert est
+                  // clair (papier), un jour vide s'enfonce dans le grège, et le
+                  // jour choisi passe en bleu plein. Le compteur se lit avant
+                  // d'ouvrir — un jour à un créneau et un jour à douze ne se
+                  // valent pas.
+                  "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-[10px] border px-0.5 py-1.5 transition-colors",
                   active
-                    ? "bg-primary text-primary-foreground"
+                    ? "border-primary bg-primary text-primary-foreground"
                     : empty
-                      ? "text-subtle opacity-45"
-                      : "text-foreground hover:bg-surface"
+                      ? "border-border bg-surface-strong text-subtle"
+                      : "border-border bg-elevated text-foreground hover:border-primary"
                 )}
               >
-                <span className="text-[0.625rem] leading-none first-letter:uppercase">
+                <span
+                  className={cn(
+                    "text-[0.625rem] leading-none first-letter:uppercase",
+                    active ? "text-primary-foreground/75" : "text-subtle"
+                  )}
+                >
                   {weekdayShort(key)}
                 </span>
-                <span className="font-display text-base font-semibold leading-none">
+                <span className="text-[0.9375rem] font-semibold leading-none">
                   {Number(key.slice(8, 10))}
                 </span>
                 <span
                   className={cn(
                     "text-[0.625rem] leading-none",
-                    active ? "text-primary-foreground/75" : "text-subtle"
+                    active
+                      ? "text-primary-foreground/90"
+                      : empty
+                        ? "text-subtle"
+                        : "text-success"
                   )}
                 >
                   {total === null ? "·" : total === 0 ? "—" : total}
@@ -602,10 +642,10 @@ export function BookingWidget({
                         aria-pressed={selected === slot.startsAt}
                         onClick={() => setSelected(slot.startsAt)}
                         className={cn(
-                          "min-h-11 rounded-[var(--radius-sm)] border px-3 text-sm transition-colors",
+                          "min-h-11 rounded-full border px-4 text-sm transition-colors",
                           selected === slot.startsAt
                             ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border hover:border-primary"
+                            : "border-border bg-elevated hover:border-primary"
                         )}
                       >
                         {formatHour(slot.startsAt, timezone)}
@@ -623,7 +663,7 @@ export function BookingWidget({
               <button
                 type="button"
                 onClick={() => setShowQuarters(true)}
-                className="inline-flex min-h-9 w-fit items-center rounded-full border border-border px-3 text-xs text-muted transition-colors hover:border-primary hover:text-primary"
+                className="inline-flex min-h-9 w-fit items-center rounded-full border border-dashed border-border px-3 text-xs text-muted transition-colors hover:border-primary hover:text-primary"
               >
                 + quarts d’heure
               </button>
@@ -716,11 +756,17 @@ export function BookingWidget({
                 </p>
               </div>
             )}
-            <p className="text-center text-xs text-muted">
-              Rien n&apos;est prélevé : vous réglez le prof directement.
-            </p>
           </div>
         ) : null}
+
+        {/* Ce que devient la demande, dit avant de la faire — et notamment que
+            le créneau ne file pas pendant que le prof réfléchit. Toujours
+            visible : c'est la question qu'on se pose *avant* de choisir. */}
+        <p className="text-xs leading-relaxed text-muted">
+          Le prof confirme votre demande. Le créneau reste bloqué pour vous en
+          attendant sa réponse, et rien n&apos;est prélevé : vous le réglez
+          directement.
+        </p>
       </CardContent>
     </Card>
   );

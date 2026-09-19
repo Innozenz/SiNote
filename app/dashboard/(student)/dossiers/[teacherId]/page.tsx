@@ -7,9 +7,10 @@ import {
   FileText,
   MessageSquare,
   Star,
+  Video,
 } from "lucide-react";
 
-import { Eyebrow, PageTitle } from "@/components/editorial";
+import { Eyebrow, PageTitle, SectionTitle } from "@/components/editorial";
 import { FicheTabs } from "@/components/fiche-tabs";
 import { InstrumentChip } from "@/components/instrument-chip";
 import {
@@ -28,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Stars } from "@/components/ui/stars";
 import { auth } from "@/lib/auth";
 import { lessonTitle } from "@/lib/bookings/title";
+import { formatPrice } from "@/lib/format/price";
 import prisma from "@/lib/prisma";
 import { reportPlainText, sanitizeReportHtml } from "@/lib/reports/sanitize";
 import { canReviewTeacher } from "@/lib/reviews/eligibility";
@@ -44,6 +46,17 @@ const STATUS_LABELS = {
 };
 
 /**
+ * Le lieu, dit du point de vue de l'élève. `LESSON_MODE_LABELS` écrit « chez
+ * vous » pour le domicile du prof, ce qui, lu ici, désigne l'inverse exact —
+ * même raison que la table jumelle de `components/student-bookings`.
+ */
+const MODE_LABELS: Record<string, string> = {
+  ONLINE: "en visio",
+  TEACHER_PLACE: "chez le prof",
+  STUDENT_PLACE: "chez vous",
+};
+
+/**
  * Dossier partagé, vu par l'élève.
  *
  * Le pendant de la fiche élève côté prof : un hub par relation prof↔élève qui
@@ -51,10 +64,12 @@ const STATUS_LABELS = {
  * La note privée du prof n'y figure pas — elle lui reste réservée. Accessible
  * seulement si l'élève a au moins un cours avec ce prof, sinon 404.
  *
- * Les comptes rendus s'y **lisent comme une page**, dépliés, et non repliés
- * derrière un titre : c'est ce que l'élève vient chercher, et le premier onglet
- * l'ouvre directement. La colonne de droite porte ce qui prolonge la relation —
- * le prochain cours, de quoi en reprendre un, et l'avis.
+ * Un compte rendu s'y **lit comme une page** : titre, texte, pièces jointes
+ * groupées par type, fil de commentaires. Un seul est déplié à la fois — le
+ * plus récent, ou celui que `?cr=` désigne ; les autres restent en titre
+ * atténué avec « Lire → ». C'est ce que l'élève vient chercher, et le premier
+ * onglet l'ouvre directement. La colonne de droite porte ce qui prolonge la
+ * relation — le prochain cours, de quoi en reprendre un, et l'avis.
  *
  * Dates dans le fuseau du **prof** : un cours a une heure, et c'est celle-là
  * que les deux parties lisent, ici comme dans les e-mails de rappel.
@@ -66,6 +81,8 @@ export default async function StudentDossierPage({
   params: Promise<{ teacherId: string }>;
   searchParams: Promise<{
     onglet?: string;
+    /** Compte rendu déplié ; les autres restent en titre, à ouvrir. */
+    cr?: string;
     cr_q?: string;
     cr_instrument?: string;
     cr_from?: string;
@@ -104,6 +121,7 @@ export default async function StudentDossierPage({
           status: true,
           isTrial: true,
           mode: true,
+          priceCents: true,
           meetingUrl: true,
           address: true,
           instrument: { select: { name: true, family: true } },
@@ -214,6 +232,8 @@ export default async function StudentDossierPage({
     day: "numeric",
     month: "long",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: zone,
   });
   // Date civile (AAAA-MM-JJ) dans le fuseau du prof (celui qui date les cours),
@@ -269,6 +289,7 @@ export default async function StudentDossierPage({
   const reportInstruments = [...new Set(reports.map((b) => b.instrument.name))]
     .sort((a, b) => a.localeCompare(b, "fr"))
     .map((label) => ({ value: label, label }));
+  const openReportId = sp.cr;
   const visibleReports = reports.filter((b) => {
     const day = isoDate.format(b.startsAt);
     // La recherche porte sur le texte **rendu**, pas sur le HTML : « gamme »
@@ -288,6 +309,32 @@ export default async function StudentDossierPage({
       (!crNeedle || haystack.includes(crNeedle))
     );
   });
+
+  /**
+   * Un compte rendu se lit **comme une page**, dépliée ; les précédents
+   * restent en titre, atténués, avec « Lire → ». Trois comptes rendus
+   * dépliés bout à bout, c'est trois pages empilées où l'on ne sait plus
+   * laquelle on lit — et le plus récent, celui qu'on vient chercher, se
+   * retrouve à faire défiler.
+   *
+   * Lequel est ouvert vit dans l'URL (`?cr=`), jamais dans un état React :
+   * l'adresse reste partageable, et « Lire le compte rendu » depuis « Mes
+   * cours » ouvre le bon. L'ancre `#cr-…`, elle, ne sert qu'au défilement.
+   */
+  const openReport =
+    visibleReports.find((b) => b.id === openReportId) ?? visibleReports[0] ?? null;
+
+  /** Lien qui déplie un compte rendu en conservant les filtres en cours. */
+  const openHref = (bookingId: string) => {
+    const query = new URLSearchParams({ onglet: "comptes-rendus", cr: bookingId });
+
+    if (crNeedle) query.set("cr_q", sp.cr_q!);
+    if (crInstrument) query.set("cr_instrument", crInstrument);
+    if (crFrom) query.set("cr_from", crFrom);
+    if (crTo) query.set("cr_to", crTo);
+
+    return `${basePath}?${query.toString()}#cr-${bookingId}`;
+  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -323,33 +370,33 @@ export default async function StudentDossierPage({
                 {name}
               </PageTitle>
 
-              {instruments.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {instruments.map((instrument) => (
-                    <InstrumentChip
-                      key={instrument.name}
-                      name={instrument.name}
-                      family={instrument.family}
-                    />
-                  ))}
-                </div>
-              ) : null}
+              {/* Pastilles et lien sur la même ligne : ce qu'on travaille avec
+                  lui, puis où le voir en public. */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                {instruments.map((instrument) => (
+                  <InstrumentChip
+                    key={instrument.name}
+                    name={instrument.name}
+                    family={instrument.family}
+                  />
+                ))}
 
-              {/* Le lien menait à une 404 dès que la fiche n'était plus visible
-                  (abonnement échu, fiche dépubliée) ; le serveur sait pourquoi,
-                  autant le dire. */}
-              {visible ? (
-                <Link
-                  href={`/profs/${teacher.slug}`}
-                  className="mt-3 inline-block text-sm text-primary hover:underline"
-                >
-                  Voir sa fiche publique →
-                </Link>
-              ) : (
-                <p className="mt-3 text-sm text-subtle">
-                  Fiche actuellement hors ligne.
-                </p>
-              )}
+                {/* Le lien menait à une 404 dès que la fiche n'était plus
+                    visible (abonnement échu, fiche dépubliée) ; le serveur sait
+                    pourquoi, autant le dire. */}
+                {visible ? (
+                  <Link
+                    href={`/profs/${teacher.slug}`}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Voir sa fiche publique →
+                  </Link>
+                ) : (
+                  <p className="text-sm text-subtle">
+                    Fiche actuellement hors ligne.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -372,7 +419,7 @@ export default async function StudentDossierPage({
         </header>
       </div>
 
-      <div className="grid gap-10 lg:grid-cols-[1fr_320px] lg:gap-12">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14">
         {/* --------------------------------------------------------- Onglets */}
         <div className="flex min-w-0 flex-col gap-6">
           <FicheTabs tabs={tabs} active={active} basePath={basePath} />
@@ -430,7 +477,7 @@ export default async function StudentDossierPage({
                     <div className="flex shrink-0 items-center gap-3">
                       {documented ? (
                         <Link
-                          href={`${basePath}#cr-${b.id}`}
+                          href={`${basePath}?onglet=comptes-rendus&cr=${b.id}#cr-${b.id}`}
                           className="flex items-center gap-1 py-2 text-sm text-primary hover:underline"
                         >
                           <FileText className="h-3.5 w-3.5" />
@@ -487,49 +534,94 @@ export default async function StudentDossierPage({
                   ) : null}
 
                   <ul className="flex flex-col divide-y divide-border">
-                    {visibleReports.map((b) => (
-                      <li
-                        key={b.id}
-                        id={`cr-${b.id}`}
-                        className="scroll-mt-20 py-8 first:pt-0"
-                      >
-                        <article className="flex flex-col gap-4">
-                          <div>
-                            <Eyebrow className="mb-2">
-                              <span className="first-letter:uppercase">
-                                {`${longDayFormat.format(b.startsAt)} · ${b.instrument.name}`}
-                              </span>
-                            </Eyebrow>
-                            <h2 className="font-display text-2xl font-medium text-foreground">
-                              {b.report!.title?.trim() ||
-                                lessonTitle(b.instrument.name, b.isTrial)}
-                            </h2>
-                            <p className="mt-1 text-sm text-subtle">
-                              {`Écrit le ${writtenFormat.format(b.report!.createdAt)}`}
-                            </p>
-                          </div>
+                    {visibleReports.map((b) => {
+                      const open = b.id === openReport?.id;
+                      const heading =
+                        b.report!.title?.trim() ||
+                        lessonTitle(b.instrument.name, b.isTrial);
 
-                          {/* Le HTML est assaini **ici**, à la frontière
-                              serveur : le composant de rendu n'importe aucun
-                              nettoyeur, et `sanitize-html` ne part pas dans le
-                              bundle client. */}
-                          <ReportViewer
-                            bookingId={b.id}
-                            me="STUDENT"
-                            report={{
-                              content: b.report!.content
-                                ? sanitizeReportHtml(b.report!.content)
-                                : null,
-                              attachments: b.report!.attachments,
-                              comments: b.report!.comments.map((c) => ({
-                                ...c,
-                                createdAt: c.createdAt.toISOString(),
-                              })),
-                            }}
-                          />
-                        </article>
-                      </li>
-                    ))}
+                      return (
+                        <li
+                          key={b.id}
+                          id={`cr-${b.id}`}
+                          className={
+                            open
+                              ? "scroll-mt-20 py-7 first:pt-0"
+                              : "scroll-mt-20 py-6 first:pt-0"
+                          }
+                        >
+                          <article
+                            className={
+                              open
+                                ? "flex flex-col gap-4"
+                                : "flex flex-col gap-2.5 opacity-80 transition-opacity hover:opacity-100"
+                            }
+                          >
+                            <div className="flex items-baseline justify-between gap-4">
+                              <div className="min-w-0">
+                                <Eyebrow className="mb-1.5 tracking-[0.14em]">
+                                  <span className="first-letter:uppercase">
+                                    {`${longDayFormat.format(b.startsAt)} · ${b.instrument.name}`}
+                                  </span>
+                                </Eyebrow>
+                                <h2
+                                  className={
+                                    open
+                                      ? "text-balance font-display text-3xl font-semibold leading-tight text-foreground"
+                                      : "text-balance font-display text-2xl font-medium leading-tight text-foreground"
+                                  }
+                                >
+                                  {open ? (
+                                    heading
+                                  ) : (
+                                    <Link
+                                      href={openHref(b.id)}
+                                      className="hover:underline"
+                                    >
+                                      {heading}
+                                    </Link>
+                                  )}
+                                </h2>
+                              </div>
+
+                              {open ? (
+                                <p className="shrink-0 whitespace-nowrap text-xs text-subtle">
+                                  {`Écrit le ${writtenFormat.format(b.report!.createdAt)}`}
+                                </p>
+                              ) : (
+                                <Link
+                                  href={openHref(b.id)}
+                                  className="shrink-0 whitespace-nowrap text-sm font-medium text-primary hover:underline"
+                                >
+                                  Lire →
+                                </Link>
+                              )}
+                            </div>
+
+                            {/* Le HTML est assaini **ici**, à la frontière
+                                serveur : le composant de rendu n'importe aucun
+                                nettoyeur, et `sanitize-html` ne part pas dans
+                                le bundle client. */}
+                            {open ? (
+                              <ReportViewer
+                                bookingId={b.id}
+                                me="STUDENT"
+                                report={{
+                                  content: b.report!.content
+                                    ? sanitizeReportHtml(b.report!.content)
+                                    : null,
+                                  attachments: b.report!.attachments,
+                                  comments: b.report!.comments.map((c) => ({
+                                    ...c,
+                                    createdAt: c.createdAt.toISOString(),
+                                  })),
+                                }}
+                              />
+                            ) : null}
+                          </article>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -540,37 +632,59 @@ export default async function StudentDossierPage({
         {/* ------------------------------------------------- Colonne de droite */}
         <aside className="flex flex-col gap-8">
           {nextLesson ? (
-            <section className="flex flex-col gap-3 rounded-[var(--radius)] border border-border bg-elevated p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
-                Prochain cours
-              </p>
-              <p className="font-display text-xl font-medium text-foreground first-letter:uppercase">
-                {dateFormat.format(nextLesson.startsAt)}
-              </p>
-              <p className="text-sm text-muted">
-                {lessonTitle(nextLesson.instrument.name, nextLesson.isTrial)}
-              </p>
-              {nextLesson.address ? (
-                <p className="text-sm text-muted">{nextLesson.address}</p>
-              ) : null}
-              <Link
-                href="/dashboard"
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Voir dans mes cours →
-              </Link>
+            <section className="flex flex-col gap-3.5">
+              <SectionTitle>Prochain cours</SectionTitle>
+              <div className="flex flex-col items-start gap-2.5 rounded-[var(--radius)] border border-border bg-elevated px-4 py-4 shadow-sm">
+                <p className="font-display text-2xl font-semibold leading-tight text-foreground first-letter:uppercase">
+                  {dateFormat.format(nextLesson.startsAt)}
+                </p>
+                <p className="text-sm text-muted">
+                  {[
+                    lessonTitle(nextLesson.instrument.name, nextLesson.isTrial),
+                    MODE_LABELS[nextLesson.mode],
+                    nextLesson.priceCents !== null
+                      ? formatPrice(nextLesson.priceCents)
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                {nextLesson.address ? (
+                  <p className="text-sm text-muted">{nextLesson.address}</p>
+                ) : null}
+
+                {nextLesson.meetingUrl ? (
+                  <Button asChild size="sm" className="h-11">
+                    <a
+                      href={nextLesson.meetingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Video className="h-4 w-4" />
+                      Rejoindre
+                    </a>
+                  </Button>
+                ) : (
+                  <Link
+                    href="/dashboard"
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Voir dans mes cours →
+                  </Link>
+                )}
+              </div>
             </section>
           ) : null}
 
           {nextSlots && nextSlots.slots.length > 0 ? (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-                Réserver à nouveau
-              </h2>
+            <section className="flex flex-col gap-3.5">
+              <SectionTitle>Réserver à nouveau</SectionTitle>
               <p className="text-sm text-muted">
-                Ses prochains créneaux libres, à son heure.
+                Ses prochains créneaux libres, à son heure :
               </p>
-              <div className="flex flex-wrap gap-2">
+              {/* « Tous → » est une pastille de la même rangée : c'est le
+                  dernier créneau de la liste, celui qui les ouvre tous. */}
+              <div className="flex flex-wrap gap-1.5">
                 {nextSlots.slots.map((slot) => (
                   <Link
                     key={slot.startsAt.toISOString()}
@@ -580,13 +694,13 @@ export default async function StudentDossierPage({
                     {formatSlotShort(slot.startsAt, nextSlots.timezone)}
                   </Link>
                 ))}
+                <Link
+                  href={`/profs/${teacher.slug}`}
+                  className="flex h-11 items-center rounded-full border border-primary px-3 text-sm font-medium text-primary transition-colors hover:bg-primary-soft"
+                >
+                  Tous →
+                </Link>
               </div>
-              <Link
-                href={`/profs/${teacher.slug}`}
-                className="text-sm font-medium text-primary hover:underline"
-              >
-                Tous ses créneaux →
-              </Link>
             </section>
           ) : null}
 
@@ -594,10 +708,8 @@ export default async function StudentDossierPage({
               le rappel de ce qui est déjà en ligne. Deux formulaires pour un
               seul avis se contrediraient. */}
           {existingReview || reviewable.ok ? (
-            <section className="flex flex-col gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-                Votre avis
-              </h2>
+            <section className="flex flex-col gap-3.5">
+              <SectionTitle>Votre avis</SectionTitle>
 
               {existingReview ? (
                 <>
@@ -632,6 +744,11 @@ export default async function StudentDossierPage({
                 </>
               ) : (
                 <>
+                  <p className="text-sm text-muted">
+                    Vous avez suivi un cours avec {name} : vous pouvez laisser
+                    un avis public, signé de votre prénom. Il aide les prochains
+                    élèves à choisir.
+                  </p>
                   <span
                     aria-hidden
                     className="flex items-center gap-0.5 text-accent"
@@ -640,11 +757,7 @@ export default async function StudentDossierPage({
                       <Star key={position} className="h-5 w-5" />
                     ))}
                   </span>
-                  <p className="text-sm text-muted">
-                    Vous avez suivi un cours avec {name} : votre avis aide les
-                    prochains élèves à choisir.
-                  </p>
-                  <Button asChild variant="outline" className="h-11 w-fit">
+                  <Button asChild variant="outline" size="sm" className="h-11 w-fit">
                     <Link href={`${basePath}?onglet=avis`}>Écrire un avis</Link>
                   </Button>
                 </>

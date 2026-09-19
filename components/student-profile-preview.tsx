@@ -81,11 +81,14 @@ export function StudentProfilePreview({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-4 rounded-[var(--radius)] border border-border bg-elevated p-4 shadow-sm">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
-          Ce que voit le prof
-        </p>
+      {/* L'œil-de-bœuf **au-dessus** de la carte, pas dedans : la carte est ce
+          que le prof reçoit, et une étiquette qui la légende ne doit pas avoir
+          l'air d'en faire partie. */}
+      <p className="text-xs font-medium uppercase tracking-[0.2em] text-accent">
+        Ce que voit le prof
+      </p>
 
+      <div className="flex flex-col gap-3.5 rounded-[var(--radius)] border border-border bg-elevated p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <Avatar className="h-11 w-11 shrink-0 border border-border">
             <AvatarImage src={image || undefined} alt={displayName} />
@@ -99,7 +102,7 @@ export function StudentProfilePreview({
           </div>
         </div>
 
-        <dl className="flex flex-col gap-2 border-t border-border pt-3 text-sm">
+        <dl className="flex flex-col gap-2 border-t border-border pt-3 text-sm leading-tight">
           <Line label="Demande">
             {instrument ? (
               <InstrumentChip
@@ -128,14 +131,19 @@ export function StudentProfilePreview({
           </blockquote>
         ) : null}
 
+        {/* Dans le même rythme que les autres lignes de la carte — un filet,
+            un intitulé, une valeur — parce que c'en est une : c'est une ligne
+            que le prof lit, pas une alerte posée sur son message. */}
         {blocked ? (
-          <p className="flex items-start gap-2 rounded-[var(--radius-sm)] bg-warning-soft p-3 text-sm text-warning">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
-              Responsable légal : non renseigné — la demande ne pourra pas être
-              envoyée.
+          <div className="flex flex-col gap-1 border-t border-border pt-3 text-[0.8125rem]">
+            <span className="text-muted">Responsable légal</span>
+            <span className="flex items-start gap-1.5 text-warning">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Non renseigné — la demande ne pourra pas être envoyée.
+              </span>
             </span>
-          </p>
+          </div>
         ) : null}
       </div>
 

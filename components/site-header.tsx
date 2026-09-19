@@ -24,7 +24,7 @@ export async function SiteHeader() {
 
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-2 px-4">
+      <div className="mx-auto flex h-16 max-w-[82rem] items-center justify-between gap-2 px-4 sm:px-8">
         <Link href="/" aria-label="SiNote — accueil" className="shrink-0">
           <SiteLogo />
         </Link>

@@ -89,7 +89,7 @@ export default async function StudentProfilePage() {
         size="page"
         eyebrow="Espace élève"
         title="Mon profil"
-        lead="Ces informations partent avec chaque demande de cours. À droite, ce que le prof en verra."
+        lead="Ce que le prof lit avec chaque demande de cours. À droite, exactement ce qu'il verra."
       />
       <StudentProfileForm
         initial={initial}

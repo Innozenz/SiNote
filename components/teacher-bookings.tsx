@@ -8,7 +8,6 @@ import {
   Check,
   GraduationCap,
   Loader2,
-  MessageSquare,
   ShieldAlert,
   Sparkles,
   User,
@@ -333,11 +332,12 @@ export function TeacherBookings({
           Voir le profil de l&apos;élève
         </button>
 
+        {/* Les mots de l'élève, cités : en italique entre guillemets, comme
+            dans le volet de l'agenda. C'est sa voix, pas celle de l'app. */}
         {row.studentMessage ? (
-          <p className="flex gap-2 rounded-md bg-surface p-3 text-sm text-muted">
-            <MessageSquare className="mt-0.5 h-4 w-4 shrink-0" />
-            {row.studentMessage}
-          </p>
+          <blockquote className="rounded-md bg-surface px-3.5 py-3 text-[13px] italic leading-relaxed text-muted">
+            «&nbsp;{row.studentMessage}&nbsp;»
+          </blockquote>
         ) : null}
 
         {actions.length > 0 ? (

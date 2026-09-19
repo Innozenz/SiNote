@@ -89,7 +89,10 @@ export async function generateMetadata({
   }
 
   const { instrument, response } = data;
-  const title = `Cours de ${instrument.name} — trouvez votre professeur`;
+  // Dans une phrase — et « Cours de … » en est une — le nom d'instrument prend
+  // la minuscule : « Cours de Chant » n'est pas du français. Les sigles (MAO,
+  // DJ) gardent leurs capitales, `instrumentInProse` s'en charge.
+  const title = `Cours de ${instrumentInProse(instrument.name)} — trouvez votre professeur`;
   const description = `Prenez des cours de ${instrumentInProse(instrument.name)} avec un prof près de chez vous ou en ligne. Comparez les profs, consultez leurs disponibilités et réservez votre cours en ligne sur SiNote.`;
 
   return {
@@ -122,11 +125,12 @@ export default async function InstrumentCoursePage({
   const breadcrumb = [
     { name: "Accueil", path: "/" },
     { name: "Cours de musique", path: "/profs" },
-    { name: `Cours de ${instrument.name}` },
+    { name: `Cours de ${instrumentInProse(instrument.name)}` },
   ];
 
-  // Dans une phrase, le nom prend la minuscule (« cours de piano ») ; les
-  // sigles (MAO, DJ) la gardent. Titres et fil d'Ariane restent capitalisés.
+  // Le nom prend la minuscule partout où il entre dans une phrase — titres et
+  // fil d'Ariane compris, « Cours de … » étant une phrase. Les sigles (MAO,
+  // DJ) la gardent.
   const prose = instrumentInProse(instrument.name);
   const faq = landingFaq(prose);
 
@@ -158,7 +162,7 @@ export default async function InstrumentCoursePage({
       />
 
       <SiteHeader />
-      <main className="mx-auto flex max-w-5xl flex-col gap-12 px-4 py-10 sm:py-14">
+      <main className="mx-auto flex max-w-[82rem] flex-col gap-12 px-4 sm:px-8 py-10 sm:py-14">
         <div className="flex flex-col gap-6">
           <LandingBreadcrumb items={breadcrumb} />
 
@@ -166,7 +170,7 @@ export default async function InstrumentCoursePage({
 
           <PageHeader
             eyebrow="Cours de musique"
-            title={`Cours de ${instrument.name}`}
+            title={`Cours de ${prose}`}
             titleClassName="uppercase"
             meta={
               <p className="text-sm text-muted">
@@ -207,7 +211,7 @@ export default async function InstrumentCoursePage({
                 ) : undefined
               }
             >
-              Professeurs de {instrument.name}
+              Professeurs de {prose}
             </SectionTitle>
             <TeacherResultList results={results} />
           </section>
@@ -230,7 +234,7 @@ export default async function InstrumentCoursePage({
 
         {cities.length > 0 ? (
           <LandingLinkCloud
-            title={`Cours de ${instrument.name} par ville`}
+            title={`Cours de ${prose} par ville`}
             links={cities.map((city) => ({
               label: `${instrument.name} à ${city.name}`,
               href: instrumentCityPath(slug, city.slug),

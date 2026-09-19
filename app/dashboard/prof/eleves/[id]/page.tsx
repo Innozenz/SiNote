@@ -37,6 +37,7 @@ import prisma from "@/lib/prisma";
 import { reportPlainText, sanitizeReportHtml } from "@/lib/reports/sanitize";
 import { guardianSummary, isMinor } from "@/lib/student/profile";
 import { ageOn } from "@/lib/user/age";
+import { givenName } from "@/lib/user/name";
 
 /**
  * Dossier d'un élève, vu par le prof.
@@ -97,7 +98,11 @@ export default async function StudentFilePage({
       // Repère de lecture de l'élève : c'est lui qui dit si un compte rendu a
       // été lu. Un prof qui ne le sait pas réécrit dans le vide.
       reportsSeenAt: true,
-      user: { select: { name: true, image: true } },
+      // Le prénom seul signe la citation des objectifs (« Écrit par Léa ») :
+      // il se lit avec `givenName`, jamais avec un découpage refait sur place.
+      user: {
+        select: { name: true, image: true, firstName: true, lastName: true },
+      },
       instruments: {
         select: {
           level: true,
@@ -116,6 +121,8 @@ export default async function StudentFilePage({
           status: true,
           mode: true,
           isTrial: true,
+          meetingUrl: true,
+          studentMessage: true,
           instrument: { select: { id: true, name: true, family: true } },
           report: {
             select: {
@@ -324,6 +331,8 @@ export default async function StudentFilePage({
     endsAt: b.endsAt.toISOString(),
     mode: b.mode,
     isTrial: b.isTrial,
+    meetingUrl: b.meetingUrl,
+    studentMessage: b.studentMessage,
     instrumentName: b.instrument.name,
     instrumentFamily: b.instrument.family,
     report: isWritten(b.report) && b.report
@@ -364,11 +373,11 @@ export default async function StudentFilePage({
         {/* Même rythme que les autres en-têtes (œil-de-bœuf, titre, filet), avec
             l'avatar en plus : c'est un dossier, pas une page-liste. L'œil-de-bœuf
             porte l'ancienneté — ce qu'on veut savoir avant tout d'un élève. */}
-        <header className="flex flex-col gap-6 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-center gap-4">
+        <header className="flex flex-col gap-6 border-b border-border pb-7 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-5">
             <Avatar className="h-20 w-20 shrink-0 border border-border sm:h-24 sm:w-24">
               <AvatarImage src={student.user.image || undefined} alt={name} />
-              <AvatarFallback className="text-2xl">
+              <AvatarFallback className="text-3xl">
                 {name.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -388,7 +397,9 @@ export default async function StudentFilePage({
                 {name}
               </PageTitle>
 
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              {/* Les pastilles et le lieu tiennent sur la même ligne : ce sont
+                  les mêmes faits — ce qu'il joue, et dans quelles conditions. */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
                 {chips.map((chip) => (
                   <InstrumentChip
                     key={chip.name}
@@ -397,28 +408,54 @@ export default async function StudentFilePage({
                     detail={chip.level}
                   />
                 ))}
+                {student.city || student.prefersOnline ? (
+                  <span className="text-sm text-muted">
+                    {[
+                      student.city,
+                      student.prefersOnline ? "préfère la visio" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                ) : null}
               </div>
 
-              <p className="mt-2 text-sm text-muted">
-                {[
-                  student.city,
-                  student.prefersOnline ? "préfère la visio" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-
-              {/* Un mineur n'est pas une ligne de profil parmi d'autres : sans
-                  responsable joignable, le prof ne peut ni prévenir ni décaler. */}
+              {/* L'âge et le responsable sont un état civil, pas une alerte :
+                  ils se lisent en gris. Seule l'absence de contact pour un
+                  mineur en devient une — là, le prof ne peut ni prévenir ni
+                  décaler. */}
               {guardian.isMinor ? (
-                <p className="mt-1 text-sm text-warning">
-                  {age !== null ? `${age} ans — ` : ""}mineur
-                  {guardian.contact
-                    ? ` · Responsable : ${guardian.contact}`
-                    : " · aucun contact de responsable renseigné"}
-                </p>
+                <div className="mt-2.5 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
+                  <span>
+                    {age !== null ? (
+                      <>
+                        <strong className="font-medium text-foreground">
+                          {age} ans
+                        </strong>{" "}
+                        —{" "}
+                      </>
+                    ) : null}
+                    mineur
+                  </span>
+                  {guardian.contact ? (
+                    <span>
+                      Responsable :{" "}
+                      <strong className="font-medium text-foreground">
+                        {guardian.contact}
+                      </strong>
+                    </span>
+                  ) : (
+                    <span className="text-warning">
+                      Aucun contact de responsable renseigné
+                    </span>
+                  )}
+                </div>
               ) : age !== null ? (
-                <p className="mt-1 text-sm text-muted">{age} ans</p>
+                <p className="mt-2.5 text-sm text-muted">
+                  <strong className="font-medium text-foreground">
+                    {age} ans
+                  </strong>
+                </p>
               ) : null}
             </div>
           </div>
@@ -430,7 +467,9 @@ export default async function StudentFilePage({
                 Écrire
               </Link>
             </Button>
-            <Button variant="outline" size="sm" asChild>
+            {/* « Poser un cours » est l'action principale du dossier : c'est
+                elle qui fait revenir l'élève. */}
+            <Button size="sm" asChild>
               <Link href="/dashboard/prof/agenda">
                 <CalendarPlus className="mr-2 h-4 w-4" />
                 Poser un cours
@@ -577,23 +616,38 @@ export default async function StudentFilePage({
           {student.goals ? (
             <section className="flex flex-col gap-3">
               <SectionTitle>Ses objectifs</SectionTitle>
-              <blockquote className="border-l-2 border-accent pl-4 font-display text-xl italic leading-snug text-foreground">
-                {student.goals}
+              {/* Cité, pas encadré : ce sont ses mots, et les guillemets le
+                  disent mieux qu'un filet de couleur. */}
+              <blockquote className="font-display text-[22px] italic leading-snug text-foreground">
+                «&nbsp;{student.goals}&nbsp;»
               </blockquote>
+              <p className="text-xs text-muted">
+                {[
+                  `Écrit par ${givenName(student.user) ?? name} dans son profil`,
+                  student.preferredGenres.length > 0
+                    ? `genres : ${student.preferredGenres.join(", ")}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </section>
           ) : null}
 
           {lastReport?.report ? (
             <section className="flex flex-col gap-3">
               <SectionTitle>Dernier compte rendu</SectionTitle>
+              {/* Une carte, ici, parce que c'est un document : le seul bloc de
+                  la colonne qu'on relit *en* écrivant le suivant. */}
               <Link
                 href={`${basePath}?onglet=comptes-rendus#cr-${lastReport.id}`}
-                className="-mx-2 flex flex-col gap-2 rounded-md px-2 py-2 transition-colors hover:bg-surface"
+                className="flex flex-col gap-2 rounded-[var(--radius)] border border-border bg-elevated px-[18px] py-4 transition-colors hover:bg-surface"
               >
-                <p className="text-xs text-subtle first-letter:uppercase">
-                  {dateFormat.format(lastReport.startsAt)}
+                <p className="text-sm text-muted first-letter:uppercase">
+                  {dateFormat.format(lastReport.startsAt)} ·{" "}
+                  {lastReport.instrument.name}
                 </p>
-                <p className="line-clamp-4 text-sm text-muted">
+                <p className="line-clamp-4 text-sm leading-relaxed">
                   {reportPlainText(lastReport.report.content ?? "") ||
                     "Aucun texte — seulement des pièces jointes."}
                 </p>

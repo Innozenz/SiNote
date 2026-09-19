@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { InstrumentFamily } from "@prisma/client";
-import { AlertCircle, Check, Eye, EyeOff, Loader2, Plus, X } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2, Plus, X } from "lucide-react";
 
+import { SectionTitle } from "@/components/editorial";
 import { FormFailure } from "@/components/form-failure";
 import { InstrumentChip } from "@/components/instrument-chip";
 import { StudentProfilePreview } from "@/components/student-profile-preview";
@@ -99,6 +100,10 @@ export function StudentProfileForm({
   identity: { name: string | null; image: string | null };
 }) {
   const [profile, setProfile] = useState(initial);
+  // Dernière version **enregistrée**, pour dire s'il reste quelque chose à
+  // enregistrer. Remise à jour par la réponse du serveur, pas par le brouillon
+  // local : c'est ce que la base contient qui fait la référence.
+  const [saved, setSaved] = useState(initial);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<Failure | null>(null);
   // Choix d'un instrument à ajouter : le sélecteur n'est là que quand on le
@@ -193,6 +198,16 @@ export function StudentProfileForm({
     (item) => !profile.instruments.some((i) => i.slug === item.slug)
   );
 
+  /**
+   * Quelque chose reste-t-il à enregistrer ? Comparaison sur ce qui part
+   * réellement à la route — `issues`, recalculé à chaque frappe, n'en fait
+   * pas partie et ferait croire à une modification là où il n'y en a pas.
+   */
+  const dirty = useMemo(
+    () => JSON.stringify(editable(profile)) !== JSON.stringify(editable(saved)),
+    [profile, saved]
+  );
+
   const save = async () => {
     setError(null);
 
@@ -236,6 +251,7 @@ export function StudentProfileForm({
       }
 
       setProfile(result.data);
+      setSaved(result.data);
       notifySuccess("Profil enregistré.");
     } finally {
       setIsSaving(false);
@@ -267,7 +283,7 @@ export function StudentProfileForm({
   );
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[1fr_340px] lg:gap-12">
+    <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-14">
       <div className="flex min-w-0 flex-col gap-10">
         {issues.length > 0 ? (
           <div className="rounded-[var(--radius-sm)] bg-warning-soft p-4">
@@ -284,34 +300,46 @@ export function StudentProfileForm({
         ) : null}
 
         {/* ------------------------------------------- Ce que je pratique */}
-        <section className="flex flex-col gap-4">
-          <div>
-            <SectionHeading>Ce que je pratique</SectionHeading>
-            <p className="mt-2 text-sm text-muted">
-              C&apos;est ce qui permet au prof de préparer un premier cours
-              utile.
-            </p>
-          </div>
+        <section className="flex flex-col gap-3.5">
+          {/* « Ajouter » vit dans le titre de section, à droite : c'est
+              l'action de la section, pas une ligne de plus sous la liste. */}
+          <SectionTitle
+            trailing={
+              available.length > 0 && !adding ? (
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  className="flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-medium text-primary hover:underline"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Ajouter un instrument
+                </button>
+              ) : null
+            }
+          >
+            Ce que je pratique
+          </SectionTitle>
+
+          <p className="text-sm text-muted">
+            C&apos;est ce qui permet au prof de préparer un premier cours utile.
+          </p>
 
           {profile.instruments.length > 0 ? (
             <ul className="divide-y divide-border border-y border-border">
               {profile.instruments.map((entry) => (
-                <li key={entry.slug} className="flex flex-col gap-3 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <InstrumentChip
-                      name={entry.name}
-                      family={entry.family as InstrumentFamily}
-                      className="px-2.5 py-1 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeInstrument(entry.slug)}
-                      aria-label={`Retirer ${entry.name}`}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-subtle transition-colors hover:bg-surface hover:text-danger"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
+                <li
+                  key={entry.slug}
+                  /* Une ligne, pas un bloc : la pastille, le niveau, la
+                     pratique, puis la croix. Le segmenté ne prend plus toute
+                     la largeur — c'est ce qui faisait passer les années et la
+                     case en dessous. */
+                  className="flex flex-wrap items-center gap-x-5 gap-y-3 py-3.5"
+                >
+                  <InstrumentChip
+                    name={entry.name}
+                    family={entry.family as InstrumentFamily}
+                    className="shrink-0 px-2.5 py-1 text-sm"
+                  />
 
                   <LevelChoice
                     slug={entry.slug}
@@ -320,30 +348,38 @@ export function StudentProfileForm({
                     onChange={(level) => updateInstrument(entry.slug, { level })}
                   />
 
-                  <div className="flex flex-wrap items-end gap-4">
-                    <div className="space-y-1">
-                      <Label htmlFor={`years-${entry.slug}`}>
-                        Années de pratique
-                      </Label>
-                      <Input
-                        id={`years-${entry.slug}`}
-                        type="number"
-                        min={0}
-                        max={80}
-                        placeholder="0"
-                        className="w-24"
-                        value={entry.yearsPracticed ?? ""}
-                        onChange={(e) =>
-                          updateInstrument(entry.slug, {
-                            yearsPracticed: e.target.value
-                              ? Number(e.target.value)
-                              : null,
-                          })
-                        }
-                      />
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <Label
+                      htmlFor={`years-${entry.slug}`}
+                      className="whitespace-nowrap text-muted"
+                    >
+                      Depuis
+                    </Label>
+                    <Input
+                      id={`years-${entry.slug}`}
+                      type="number"
+                      min={0}
+                      max={80}
+                      placeholder="0"
+                      className="w-14 px-2 text-center"
+                      value={entry.yearsPracticed ?? ""}
+                      onChange={(e) =>
+                        updateInstrument(entry.slug, {
+                          yearsPracticed: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                    />
+                    <span className="whitespace-nowrap text-sm text-muted">
+                      ans
+                    </span>
+                  </div>
 
-                    <label className="flex h-11 cursor-pointer items-center gap-2 text-sm">
+                  {/* On ne possède pas le solfège : la question n'a de sens
+                      que pour un objet qu'on a — ou pas — chez soi. */}
+                  {entry.family === "THEORY" ? null : (
+                    <label className="flex h-11 cursor-pointer items-center gap-2 whitespace-nowrap text-sm">
                       <input
                         type="checkbox"
                         checked={entry.ownsInstrument}
@@ -356,7 +392,16 @@ export function StudentProfileForm({
                       />
                       J&apos;ai l&apos;instrument
                     </label>
-                  </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => removeInstrument(entry.slug)}
+                    aria-label={`Retirer ${entry.name}`}
+                    className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-subtle transition-colors hover:bg-surface hover:text-danger"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -415,16 +460,6 @@ export function StudentProfileForm({
                 Annuler
               </Button>
             </div>
-          ) : available.length > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-fit"
-              onClick={() => setAdding(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Ajouter un instrument
-            </Button>
           ) : null}
 
           {sings ? (
@@ -458,7 +493,7 @@ export function StudentProfileForm({
 
         {/* -------------------------------------------------- Mon projet */}
         <section className="flex flex-col gap-4">
-          <SectionHeading>Mon projet</SectionHeading>
+          <SectionTitle>Mon projet</SectionTitle>
 
           <div className="space-y-1">
             <Label htmlFor="goals">Ce que je veux atteindre</Label>
@@ -484,13 +519,16 @@ export function StudentProfileForm({
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">
-              Les genres qui me font venir
+              Genres qui me plaisent
             </legend>
             <p className="text-sm text-muted">
               Facultatif. Un prof de guitare ne prépare pas le même premier cours
               pour du métal et pour de la bossa.
             </p>
-            <div className="flex flex-wrap gap-2 pt-1">
+            {/* Pastille pleine quand elle est choisie, et aucune icône : une
+                coche qui apparaît élargit la pastille et fait sauter toute la
+                rangée au clic. */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
               {PREFERRED_GENRES.map((genre) => {
                 const selected = profile.preferredGenres.includes(genre);
 
@@ -503,11 +541,10 @@ export function StudentProfileForm({
                     className={cn(
                       "flex h-11 items-center rounded-full border px-4 text-sm transition-colors",
                       selected
-                        ? "border-primary bg-primary-soft text-primary"
+                        ? "border-primary bg-primary font-medium text-primary-foreground"
                         : "border-border text-muted hover:border-border-strong"
                     )}
                   >
-                    {selected ? <Check className="mr-1.5 h-3.5 w-3.5" /> : null}
                     {genre}
                   </button>
                 );
@@ -518,7 +555,7 @@ export function StudentProfileForm({
 
         {/* --------------------------------------------------------- Moi */}
         <section className="flex flex-col gap-4">
-          <SectionHeading>Moi</SectionHeading>
+          <SectionTitle>Moi</SectionTitle>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
@@ -563,7 +600,7 @@ export function StudentProfileForm({
                 </p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">
                   <Label htmlFor="guardianName">Nom</Label>
                   <Input
@@ -573,21 +610,21 @@ export function StudentProfileForm({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="guardianEmail">E-mail</Label>
-                  <Input
-                    id="guardianEmail"
-                    type="email"
-                    value={profile.guardianEmail ?? ""}
-                    onChange={(e) => set("guardianEmail", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
                   <Label htmlFor="guardianPhone">Téléphone</Label>
                   <Input
                     id="guardianPhone"
                     type="tel"
                     value={profile.guardianPhone ?? ""}
                     onChange={(e) => set("guardianPhone", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="guardianEmail">E-mail</Label>
+                  <Input
+                    id="guardianEmail"
+                    type="email"
+                    value={profile.guardianEmail ?? ""}
+                    onChange={(e) => set("guardianEmail", e.target.value)}
                   />
                 </div>
               </div>
@@ -625,9 +662,11 @@ export function StudentProfileForm({
             par-dessus le contenu qu'il survole et en masque les dernières
             lignes. */}
         <div className="sticky bottom-0 -mx-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6">
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="text-sm text-subtle">
-              Les modifications ne sont enregistrées qu&apos;ici.
+          <div className="flex flex-wrap items-center justify-end gap-4">
+            <span className="text-sm text-muted">
+              {dirty
+                ? "Modifications non enregistrées"
+                : "Les modifications ne sont enregistrées qu'ici."}
             </span>
             <Button size="lg" disabled={isSaving} onClick={save}>
               {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -644,16 +683,28 @@ export function StudentProfileForm({
   );
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3">
-      <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-accent" />
-      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-foreground">
-        {children}
-      </h2>
-      <span aria-hidden className="h-px flex-1 bg-border" />
-    </div>
-  );
+/**
+ * Ce qui part réellement à la route, sans les manques recalculés à l'écran.
+ * Sert à dire s'il reste des modifications non enregistrées.
+ */
+function editable(profile: StudentProfileData): Omit<
+  StudentProfileData,
+  "issues"
+> {
+  return {
+    birthDate: profile.birthDate,
+    guardianName: profile.guardianName,
+    guardianEmail: profile.guardianEmail,
+    guardianPhone: profile.guardianPhone,
+    goals: profile.goals,
+    musicalBackground: profile.musicalBackground,
+    readsSheetMusic: profile.readsSheetMusic,
+    preferredGenres: profile.preferredGenres,
+    voiceType: profile.voiceType,
+    prefersOnline: profile.prefersOnline,
+    city: profile.city,
+    instruments: profile.instruments,
+  };
 }
 
 /**
@@ -678,9 +729,12 @@ function LevelChoice({
   return (
     <fieldset className="min-w-0">
       <legend className="sr-only">{`Niveau — ${name}`}</legend>
+      {/* Largeur au contenu, pas à la ligne : étalé sur toute la colonne, le
+          segmenté repoussait la pratique et la case à la ligne suivante, et
+          une ligne d'instrument en occupait trois. */}
       <div
         className={cn(
-          "grid grid-cols-2 overflow-hidden rounded-[var(--radius-sm)] border sm:grid-cols-4",
+          "flex w-fit gap-0.5 rounded-[var(--radius-sm)] border bg-elevated p-[3px]",
           value === null ? "border-warning" : "border-border"
         )}
       >
@@ -699,10 +753,10 @@ function LevelChoice({
               />
               <span
                 className={cn(
-                  "flex h-11 cursor-pointer items-center justify-center px-2 text-center text-xs font-medium transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-primary",
+                  "flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[calc(var(--radius-sm)-2px)] px-2.5 text-center text-[0.8125rem] transition-colors peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:-outline-offset-2 peer-focus-visible:outline-primary",
                   selected
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-elevated text-muted hover:bg-surface"
+                    ? "bg-primary font-medium text-primary-foreground"
+                    : "text-muted hover:bg-surface"
                 )}
               >
                 {LEVEL_LABELS[level]}
