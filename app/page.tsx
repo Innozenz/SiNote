@@ -477,7 +477,7 @@ export default async function HomePage() {
               <div className="m-reveal">
                 <SectionTitle
                   trailing={
-                    <span className="shrink-0 text-sm font-normal normal-case tracking-normal text-muted">
+                    <span className="hidden shrink-0 text-sm font-normal normal-case tracking-normal text-muted md:inline">
                       {repertoireNote}
                     </span>
                   }
@@ -696,11 +696,33 @@ function ShowcaseRow({ teacher }: { teacher: SearchResult }) {
                 ))}
               </div>
             ) : null}
+
+            {/* Téléphone : prix et prochain créneau passent sous les pastilles ;
+                la colonne de droite n'apparaît qu'à partir de `sm`. */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:hidden">
+              {teacher.hourlyRateCents !== null ? (
+                <p className="font-display text-xl font-semibold leading-none text-foreground">
+                  {`${Math.round(teacher.hourlyRateCents / 100)} €`}
+                  <span className="font-sans text-sm font-medium text-muted">
+                    {" / heure"}
+                  </span>
+                </p>
+              ) : null}
+              {next && teacher.nextSlots ? (
+                <p className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-success" />
+                  {`Prochain créneau ${formatSlotShort(
+                    next.startsAt,
+                    teacher.nextSlots.timezone
+                  )}`}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       }
       meta={
-        <div className="flex items-center gap-3">
+        <div className="hidden items-center gap-3 sm:flex">
           <div className="flex flex-col items-end gap-1.5">
             {teacher.hourlyRateCents !== null ? (
               <p className="font-display text-[1.625rem] font-semibold leading-none text-foreground">

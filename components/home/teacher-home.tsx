@@ -395,7 +395,7 @@ export async function TeacherHome({
 
       {blocker ? <TeacherVisibilityNotice blocker={blocker} /> : null}
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-14">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-14">
         <div className="flex min-w-0 flex-col gap-10">
           <section className="flex flex-col gap-4">
             <SectionTitle

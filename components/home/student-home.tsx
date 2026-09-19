@@ -386,7 +386,7 @@ export async function StudentHome({
         }
       />
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14">
         <StudentLessons
           initial={rows}
           reviewableTeacherIds={reviewableTeacherIds}

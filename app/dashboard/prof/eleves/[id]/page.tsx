@@ -479,7 +479,7 @@ export default async function StudentFilePage({
         </header>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-6">
           <FicheTabs tabs={tabs} active={active} basePath={basePath} />
 
